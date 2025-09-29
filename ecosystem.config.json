@@ -1,0 +1,25 @@
+{
+  "apps": [
+    {
+      "name": "codeon",
+      "script": "C:\\Users\\lars\\.virtualenvs\\acodeon-EUIDYRpc\\Scripts\\pythonw.exe",
+      "args": [
+        "-m",
+        "codeon",
+        "server",
+        "-v",
+        "1"
+      ],
+      "cwd": "C:\\Users\\lars\\python_venvs\\packages\\acodeon",
+      "env": {
+        "PYTHONPATH": "C:\\Users\\lars\\python_venvs\\packages\\acodeon",
+        "PIPENV_IGNORE_VIRTUALENVS": 1,
+        "pg_alias": "codeon",
+        "appName": "codeon",
+        "test_color": "GREEN",
+        "port": 9007
+      },
+      "max_restarts": 2
+    }
+  ]
+}
