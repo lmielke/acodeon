@@ -8,7 +8,7 @@ from colorama import Fore, Style
 import codeon.settings as sts
 from codeon.helpers.tree import Tree
 from codeon.helpers.import_info import main as import_info
-from codeon.helpers.package_info import pipenv_is_active
+from codeon.helpers.collections import pipenv_is_active
 
 
 all_infos = {"python", "package"}

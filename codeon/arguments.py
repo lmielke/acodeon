@@ -1,97 +1,106 @@
 """
-    pararses codeon arguments and keyword arguments
-    args are provided by a function call to mk_args()
-    
-    RUN like:
-    import codeon.arguments
-    kwargs.updeate(arguments.mk_args().__dict__)
+parses codeon arguments and keyword arguments
+args are provided by a function call to mk_args()
+
+RUN like:
+import codeon.arguments
+kwargs.update(arguments.mk_args().__dict__)
 """
 import argparse
 from typing import Dict
 
 
 def mk_args():
-    parser = argparse.ArgumentParser(description="run: python -m codeon info")
+    parser = argparse.ArgumentParser(description="run: python -m codeon <api> [options]")
     parser.add_argument(
-                            "api", 
-                            metavar="api", nargs=None, 
-                            help=(
-                                    f""
-                                    f"see codeon.apis"
-                                )
-                        )
-    
-    parser.add_argument(
-        "--port",
-        required=False,
-        nargs=None,
-        const=None,
-        type=str,
-        default=None,
-        help=f"Port to run server.pyw on i.e. 9005"
+        "api",
+        metavar="api",
+        help="API to run (e.g., info, update, server).",
     )
 
+    # --- API-specific arguments ---
+    # For 'update' API
+    parser.add_argument(
+        "-s",
+        "--source_path",
+        type=str,
+        help="path to the source file to update.",
+    )
+    parser.add_argument(
+        "-o",
+        "--op_codes_path",
+        type=str,
+        help="path to the update/op-code file.",
+    )
+    parser.add_argument(
+        "--hard",
+        action="store_true",
+        help="Overwrite the source file directly (used with 'update').",
+    )
+    parser.add_argument(
+        "-b",
+        "--black",
+        action="store_true",
+        help="Format the output file using 'black' (used with 'update').",
+    )
+
+    # For 'server' API
+    parser.add_argument(
+        "--port",
+        type=str,
+        help="Port for the server to run on (e.g., 9007).",
+    )
+
+    # For 'info' API
     parser.add_argument(
         "-i",
         "--infos",
-        required=False,
         nargs="+",
-        const=None,
         type=str,
-        default=None,
-        help="list of infos to be retreived, default: all",
+        help="List of infos to retrieve (used with 'info').",
     )
 
+    # --- General arguments ---
     parser.add_argument(
         "-v",
         "--verbose",
-        required=False,
         nargs="?",
         const=1,
         type=int,
         default=0,
-        help="0:silent, 1:user, 2:debug",
+        help="Set verbosity level: 0=silent, 1=user, 2=debug.",
     )
-
     parser.add_argument(
         "-y",
         "--yes",
-        required=False,
-        nargs="?",
-        const=1,
-        type=bool,
-        default=None,
-        help="run without confirm, not used",
+        action="store_true",
+        help="Run without confirmation (not currently used).",
     )
 
     return parser.parse_args()
 
 
-
 def get_required_flags(parser: argparse.ArgumentParser) -> Dict[str, bool]:
     """
     Extracts the 'required' flag for each argument from an argparse.ArgumentParser object.
-
-    Args:
-        parser (argparse.ArgumentParser): The parser to extract required flags from.
-
-    Returns:
-        Dict[str, bool]: A dictionary with argument names as keys and their 'required' status as values.
     """
     required_flags = {}
     for action in parser._actions:
-        if isinstance(action, argparse._StoreAction):
-            # For positional arguments, the 'required' attribute is not explicitly set,
-            # but they are required by default.
-            is_required = getattr(action, 'required', True) if action.option_strings == [] else action.required
-            # Option strings is a list of option strings (e.g., '-f', '--foo').
-            for option_string in action.option_strings:
-                required_flags[option_string] = is_required
-            if not action.option_strings: # For positional arguments
-                required_flags[action.dest] = is_required
+        if action.dest in ("help", "version"):
+            continue
+        # Positional arguments are required by default (no option_strings).
+        is_required = action.required or not action.option_strings
+        for option_string in action.option_strings:
+            required_flags[option_string] = is_required
+        if not action.option_strings:  # For positional arguments
+            required_flags[action.dest] = is_required
     return required_flags
 
+
 if __name__ == "__main__":
+    # Note: Running this file directly will cause an error
+    # because the 'api' argument is required.
+    # Use 'python -m codeon -h' to test.
     parser = mk_args()
     required_flags = get_required_flags(parser)
     print(required_flags)

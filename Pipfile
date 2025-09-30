@@ -16,6 +16,7 @@ graphviz = "*"
 python-dotenv = "*"
 pyttsx3 = "*"
 pyperclip = "*"
+libcst = "*"
 
 [dev-packages]
 graphviz = "*"

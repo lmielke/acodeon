@@ -23,57 +23,56 @@ import json, os, shutil, sys, time, yaml
 
 from contextlib import contextmanager
 import functools
-from pathlib import Path
 
 import codeon.settings as sts
 
 
 @contextmanager
-def temp_secret(j, *args, secretsFilePath: str, entryName: str, **kwargs) -> None:
+def temp_secret(j, *args, secrets_file_path: str, entryName: str, **kwargs) -> None:
     """
     temporaryly renames files in .ssp for upload to bypass files
-    secretsFilePath: full path to secretsfile.json
+    secrets_file_path: full path to secretsfile.json
     creds: codeon params to get secret
             {entryName: secretToWrite}
     """
-    fType = os.path.splitext(secretsFilePath)[-1]
+    fType = os.path.splitext(secrets_file_path)[-1]
     try:
         secrets = j.secrets.get(entryName)
-        with open(secretsFilePath, "w") as f:
+        with open(secrets_file_path, "w") as f:
             if fType == ".json":
                 json.dump(secrets, f)
             elif fType == "sts.fext":
                 yaml.dump(secrets, f)
             else:
                 raise Exception(f"Invalid file extension: {fType}, use [.json, sts.fext]")
-        while not os.path.exists(secretsFilePath):
+        while not os.path.exists(secrets_file_path):
             continue
         yield
     except Exception as e:
         print(f"oamailer.secrets_loader Exception: {e}")
     finally:
-        if os.path.exists(secretsFilePath):
-            os.remove(secretsFilePath)
+        if os.path.exists(secrets_file_path):
+            os.remove(secrets_file_path)
 
 
 @contextmanager
-def temp_chdir(tempDataPath, *args, temp_chdir: Path = None, **kwargs) -> None:
+def temp_chdir(temp_data_path, *args, temp_chdir: str = None, **kwargs) -> None:
     """Sets the cwd within the context
 
     Args:
-        temp_chdir (Path): The temp_chdir to the cwd
+        temp_chdir (str): The temp_chdir to the cwd
 
     Yields:
         None
     """
     origin = os.getcwd()
     if temp_chdir == 'temp_file':
-        if os.path.isfile(tempDataPath):
-            temp_chdir = os.path.dirname(tempDataPath)
-        elif os.path.isdir(tempDataPath):
-            temp_chdir = tempDataPath
+        if os.path.isfile(temp_data_path):
+            temp_chdir = os.path.dirname(temp_data_path)
+        elif os.path.isdir(temp_data_path):
+            temp_chdir = temp_data_path
         else:
-            raise Exception(f"testhelper.temp_chdir.tempDataPath: {tempDataPath} not found")
+            raise Exception(f"testhelper.temp_chdir.temp_data_path: {temp_data_path} not found")
     temp_chdir = temp_chdir if temp_chdir is not None else os.getcwd()
     try:
         os.chdir(temp_chdir)
@@ -86,7 +85,7 @@ def temp_chdir(tempDataPath, *args, temp_chdir: Path = None, **kwargs) -> None:
 def temp_ch_host_name(hostName: str) -> None:
     """Sets the cwd within the context
     Args:
-        host (Path): The host to the cwd
+        host (str): The host to the cwd
     Yields:
         None
     """
@@ -105,18 +104,18 @@ def temp_safe_rename(*args, safeName: str, prefix: str = "#", **kwargs) -> None:
     """
     # rename fileName by adding prefix
     fileName = f"{safeName.lower()}sts.fext"
-    currPath = os.path.join(sts.encryptDir, fileName)
-    tempPath = os.path.join(sts.encryptDir, f"{prefix}{fileName}")
+    curr_path = os.path.join(sts.encryptDir, fileName)
+    temp_path = os.path.join(sts.encryptDir, f"{prefix}{fileName}")
     try:
-        if os.path.exists(currPath):
-            os.rename(currPath, tempPath)
+        if os.path.exists(curr_path):
+            os.rename(curr_path, temp_path)
         yield
     finally:
-        if os.path.exists(tempPath):
-            if os.path.exists(currPath):
-                os.remove(currPath)
+        if os.path.exists(temp_path):
+            if os.path.exists(curr_path):
+                os.remove(curr_path)
             time.sleep(0.1)
-            os.rename(tempPath, currPath)
+            os.rename(temp_path, curr_path)
             time.sleep(0.1)
 
 
@@ -142,15 +141,15 @@ def test_setup(*args, temp_pass:str=None, **kwargs):
         def wrapper(self, *inner_args, **inner_kwargs):
             # Wrapper function that sets up the test environment and executes the test
             # Use temp_test_file to create a temporary file
-            with temp_test_file(test_func.__name__, *args, **kwargs) as tempDataPath:
+            with temp_test_file(test_func.__name__, *args, **kwargs) as temp_data_path:
                 # Use temp_chdir to change the current working directory
-                with temp_chdir(tempDataPath, *args, **kwargs):
+                with temp_chdir(temp_data_path, *args, **kwargs):
                     # use temporary testing passwords for encryption
                     # NOTE: this was formally included when calling unittest.main() on the
                     # test module. This did not always work however. So it was moved here.
                     with temp_password(*args, **kwargs):
                         # Execute the test function with the path to the temporary files.
-                        return test_func(self, tempDataPath, *inner_args, **inner_kwargs)
+                        return test_func(self, temp_data_path, *inner_args, **inner_kwargs)
 
         return wrapper
 
@@ -170,22 +169,22 @@ def temp_test_file(temp_dir_name: str, *args, temp_file: str, **kwargs) -> None:
         1. created tempDir like sts.test_data_dir/temp_dir_name
             tempDir = sts.test_data_dir/test__prep_api_params/
         2. copies sts.test_data_dir/safe_one.json to tempDir/safe_one.json
-            tempPath = sts.test_data_dir/test__prep_api_params/safe_one.json
+            temp_path = sts.test_data_dir/test__prep_api_params/safe_one.json
     use like Example:
-    with helpers.temp_test_file('test__prep_api_params', 'safe_one.json') as tempPath:
-        run_any_test_using(tempPath)
+    with helpers.temp_test_file('test__prep_api_params', 'safe_one.json') as temp_path:
+        run_any_test_using(temp_path)
     """
     # no file is needed, but this context manager still has to run
     if temp_file is None: temp_file = 'empty.txt'
-    sourcePath = os.path.join(sts.test_data_dir, temp_file)
-    assert os.path.isfile(sourcePath), f"file {sourcePath} not found"
+    source_path = os.path.join(sts.test_data_dir, temp_file)
+    assert os.path.isfile(source_path), f"file {source_path} not found"
     try:
         tempDir = os.path.join(sts.test_data_dir, temp_dir_name)
-        tempPath = os.path.join(tempDir, temp_file)
+        temp_path = os.path.join(tempDir, temp_file)
         if not os.path.isdir(tempDir):
             os.makedirs(tempDir)
-        shutil.copyfile(sourcePath, tempPath)
-        yield tempPath
+        shutil.copyfile(source_path, temp_path)
+        yield temp_path
     finally:
         if os.path.exists(tempDir):
             shutil.rmtree(tempDir, ignore_errors=False, onerror=None)
@@ -234,14 +233,14 @@ def mk_test_file(tempDataDir, fileName, testDataStr=None, *args, **kwargs):
     """
     test files to be encrypted are created on the fly inside a temp directory
     """
-    testFilePath = os.path.join(tempDataDir, fileName)
+    test_file_path = os.path.join(tempDataDir, fileName)
     testDataStr = sts.cryptonizeDataStr if testDataStr is None else testDataStr
-    if testFilePath.endswith(".yml"):
-        if not os.path.isfile(testFilePath):
-            with open(testFilePath, "w") as f:
+    if test_file_path.endswith(".yml"):
+        if not os.path.isfile(test_file_path):
+            with open(test_file_path, "w") as f:
                 f.write(yaml.dump(sts.testDataDict))
-    elif testFilePath.endswith(".json"):
-        if not os.path.isfile(testFilePath):
-            with open(testFilePath, "w+") as f:
+    elif test_file_path.endswith(".json"):
+        if not os.path.isfile(test_file_path):
+            with open(test_file_path, "w+") as f:
                 json.dump(json.dumps(testDataStr, ensure_ascii=False), f)
-    return testFilePath
+    return test_file_path

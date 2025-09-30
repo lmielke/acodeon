@@ -1,9 +1,10 @@
 # collections.py
 import json, os, pyttsx3, re, shutil, subprocess, sys, textwrap, time, yaml
 from contextlib import contextmanager
-from pathlib import Path
 from tabulate import tabulate as tb
 from datetime import datetime as dt
+import shutil
+import subprocess
 
 import codeon.settings as sts
 
@@ -115,6 +116,12 @@ def temp_chdir(target_dir: str) -> None:
     Parameters:
     target_dir (str): The target directory to change to.
 
+    Use like:
+        with temp_chdir('/path/to/dir'):
+            # code that runs in the target directory
+            ...
+        # back to original directory
+
     Yields:
     None
     """
@@ -171,3 +178,47 @@ def strip_ansi_codes(text: str) -> str:
     """
     ansi_escape = re.compile(r'\x1b\[([0-9]+)(;[0-9]+)*m')
     return ansi_escape.sub('', text)
+
+"""
+Provides utility functions for the refactoring engine, such as code formatters.
+"""
+
+
+def format_with_black(code: str, *args, verbose: int = 0, **kwargs) -> str:
+    """
+    Formats a string of Python code using the 'black' code formatter.
+
+    If 'black' is not found in the system's PATH, it returns the original code.
+    """
+    if not shutil.which("black"):
+        if verbose >= 1:
+            print("WARNING: --black flag used, but 'black' is not in the system's PATH.")
+        return code
+
+    if verbose >= 2:
+        print("Formatting output with black...")
+
+    try:
+        process = subprocess.run(
+            ["black", "-q", "-"],
+            input=code,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        return process.stdout if process.returncode == 0 else code
+    except Exception as e:
+        if verbose >= 1:
+            print(f"Error running black formatter: {e}")
+        return code
+
+# project environment info
+def pipenv_is_active(exec_path, *args, **kwargs):
+    """
+    check if the environment is active 
+    pipenv is active when the package name appears as the basename of the exec_path
+    """
+    # print(f"{os.path.basename(exec_path.split('Scripts')[0].strip(os.sep)) = }")
+    is_active = os.path.basename(exec_path.split('Scripts')[0]\
+                    .strip(os.sep)).startswith(sts.project_name)
+    return is_active

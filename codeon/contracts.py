@@ -79,5 +79,6 @@ def normalize_path(path: str, *args, **kwargs) -> str:
         return path
     p = os.path.expanduser(path)
     if not os.path.isabs(p):
-        p = os.path.abspath(os.path.join(os.getcwd(), p))
+        if os.path.exists(os.path.abspath(os.path.join(os.getcwd(), p))):
+            p = os.path.abspath(os.path.join(os.getcwd(), p))
     return os.path.normpath(p)
