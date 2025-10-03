@@ -179,38 +179,6 @@ def strip_ansi_codes(text: str) -> str:
     ansi_escape = re.compile(r'\x1b\[([0-9]+)(;[0-9]+)*m')
     return ansi_escape.sub('', text)
 
-"""
-Provides utility functions for the refactoring engine, such as code formatters.
-"""
-
-
-def format_with_black(code: str, *args, verbose: int = 0, **kwargs) -> str:
-    """
-    Formats a string of Python code using the 'black' code formatter.
-
-    If 'black' is not found in the system's PATH, it returns the original code.
-    """
-    if not shutil.which("black"):
-        if verbose >= 1:
-            print("WARNING: --black flag used, but 'black' is not in the system's PATH.")
-        return code
-
-    if verbose >= 2:
-        print("Formatting output with black...")
-
-    try:
-        process = subprocess.run(
-            ["black", "-q", "-"],
-            input=code,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        return process.stdout if process.returncode == 0 else code
-    except Exception as e:
-        if verbose >= 1:
-            print(f"Error running black formatter: {e}")
-        return code
 
 # project environment info
 def pipenv_is_active(exec_path, *args, **kwargs):

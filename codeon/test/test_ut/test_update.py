@@ -39,7 +39,8 @@ class Test__update(unittest.TestCase):
 
     def test__update_success_path(self, *args, **kwargs):
         """Tests the 'happy path' where the transformation is successful."""
-        _update(source_path=self.test_target_name, black=True)
+        out = _update(source_path=self.test_target_name, black=True)
+        print(f"{out = }")
 
     def test_update_halts_on_invalid_op_code(self):
         """

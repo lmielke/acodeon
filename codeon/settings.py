@@ -71,7 +71,10 @@ if not os.path.exists(resources_dir):
 
 update_logs_dir = os.path.join(resources_dir, 'update_logs')
 update_logs_temp_dir_name = 'temp_files'
+update_temp_dir = os.path.join(resources_dir, update_logs_temp_dir_name)
 update_logs_op_code_files_dir_name = 'op_code_files'
+update_temp_test_dir = os.path.join(update_logs_dir, package_name, update_logs_temp_dir_name)
+print(f"{update_temp_test_dir = }")
 update_logs_test_dir = os.path.join(update_logs_dir, package_name, update_logs_op_code_files_dir_name)
 
 user_settings_name = "settings.yml"

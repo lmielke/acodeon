@@ -38,23 +38,40 @@ class TestParsers(unittest.TestCase):
         """WHY: Clean temp dir created in setUpClass."""
         shutil.rmtree(cls.test_dir)
 
-    def test__update_success_path(self, *args, **kwargs):
-        """Tests the 'happy path' where the transformation is successful."""
-        _update(source_path=self.test_target_name, black=True)
 
-    def test_update_halts_on_invalid_op_code(self):
-        """
-        Tests that the update process exits cleanly when an invalid op-code is found.
-        """
-        invalid_op_path = os.path.join(sts.test_data_dir, "invalid_op_code_file.py")
-        source_path = os.path.join(sts.test_data_dir, "test_parsers_data.py")
+    def test_cst_source_initialization_and_parsing(self):
+        """WHY: Ensure CSTSource loads and parses into a cst.Module."""
+        parser = CSTSource(source_path=self.source_file)
+        self.assertIn("class FirstClass:", parser.source)
+        tree = parser.parse()
+        self.assertIsInstance(tree, cst.Module)
 
-        with self.assertRaises(SystemExit) as cm:
-            _update(source_path=source_path, op_codes_path=invalid_op_path)
 
-        # Verify that the exit code is 1, indicating an error
-        self.assertEqual(cm.exception.code, 1)
+    def test_cst_delta_initialization_and_parsing(self):
+        """WHY: Ensure CSTDelta loads and parses operations correctly."""
+        parser = CSTDelta(op_codes_path=self.op_file)
+        self.assertIn(
+            "#-- op_code: remove, target: ThirdClass.method_to_remove", parser.source
+        )
+
+        operations = parser.parse()
+        self.assertIsInstance(operations, list)
+        self.assertEqual(len(operations), 4, "Should find all 4 operations in the file.")
+
+        replace_op = operations[2]
+        self.assertEqual(replace_op["op"], "replace")
+        self.assertEqual(replace_op["class"], "SecondClass")
+        self.assertEqual(replace_op["target"], "method_to_replace")
+        self.assertIsInstance(replace_op["node"], cst.FunctionDef)
+        self.assertTrue(hasattr(replace_op["node"], "decorators"))
+
+        remove_op = operations[3]
+        self.assertEqual(remove_op["op"], "remove")
+        self.assertEqual(remove_op["class"], "ThirdClass")
+        self.assertEqual(remove_op["target"], "method_to_remove")
+        self.assertIsNone(remove_op["node"])
 
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -39,40 +39,53 @@ def _archive_op_code_file(*args, op_codes_path: str, ch_id: str, **kwargs):
         print(f"{Fore.RED}Error archiving op-code file: {e}{Style.RESET_ALL}")
 
 
-def _update(*args, work_dir:str=None, **kwargs):
-    """Orchestrates the refactoring process using a single, unified kwargs dict."""
+def _update(*args, work_dir: str = None, **kwargs):
+    """Orchestrates the refactoring process, returning a status dictionary."""
     if work_dir is None:
-        kwargs = contracts.checks(*args, api='update', **kwargs)
+        kwargs = contracts.checks(*args, api="update", **kwargs)
+        work_dir = kwargs['work_dir']
+    print(f"{Fore.GREEN}{kwargs = }{Fore.RESET}")
     path_fields = UpdatePaths.__dataclass_fields__.keys()
     paths = UpdatePaths(**{k: v for k, v in kwargs.items() if k in path_fields})
     if not paths.is_valid:
         return None
-    with temp_chdir(kwargs.get('work_dir')):
-        # continue updating
+    with temp_chdir(work_dir):
         kwargs.update(asdict(paths))
-        if status := RefactorEngine(*args, **kwargs).run(*args, **kwargs):
+        print(f"{Fore.YELLOW}{kwargs = }{Fore.RESET}")
+        status_dict = RefactorEngine(*args, **kwargs).run(*args, **kwargs)
+        if status_dict:
             _archive_op_code_file(*args, **kwargs)
         else:
-            print(f"{Fore.RED}Error: Transformation failed. No changes were made.{Style.RESET_ALL}")
-        _log_result(*args, status=status, **kwargs)
-    return status
+            print(
+                f"{Fore.RED}Error: Transformation failed. "
+                f"No changes were made.{Style.RESET_ALL}"
+            )
 
-# C:\Users\lars\python_venvs\packages\acodeon\codeon\apis\update.py
+        # _log_result expects a boolean status for its console output
+        _log_result(*args, status=bool(status_dict), **kwargs)
+
+    return status_dict
+
 
 def _updates(*args, **kwargs):
     """
-    Continuously runs the update process until no more op-code files are found.
+    Continuously runs the update process, collecting a status dict for each run.
     """
-    update_cnt = 0
-    # The walrus operator (:=) assigns the result of _update to 'status'
-    # and the loop continues as long as 'status' is not None or False.
-    while status := _update(*args, **kwargs):
-        update_cnt += 1
-    if update_cnt > 0:
-        print(f"\n{Fore.GREEN}Success: Completed {update_cnt} updates.{Style.RESET_ALL}")
+    update_results = []
+    # The walrus operator (:=) assigns the result of _update to 'status_dict'
+    # and the loop continues as long as it's not None.
+    while status_dict := _update(*args, **kwargs):
+        update_results.append(status_dict)
 
-    return update_cnt > 0  # Return True if any updates were made, False otherwise
+    if update_results:
+        print(
+            f"\n{Fore.GREEN}Success: "
+            f"Completed {len(update_results)} updates.{Style.RESET_ALL}"
+        )
+    else:
+        print(f"\n{Fore.YELLOW}No updates were applied.{Style.RESET_ALL}")
 
+    return update_results  # Return list of status dicts
 
 def main(*args, **kwargs):
     """Main entry point for the 'update' API."""

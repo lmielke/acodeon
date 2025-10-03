@@ -14,11 +14,12 @@ class UpdatePaths:
     """
 
     # --- Inputs (will be overwritten with resolved paths) ---
-    source_path: str
+    source_path: str | None = None
     op_codes_path: str | None = None
     hard: bool = False
     project_dir: str = field(default_factory=os.getcwd)
     pg_name: str = "default_package"
+    api: str = "create"
 
     # --- Derived Paths ---
     ch_id: str = field(init=False)
@@ -27,6 +28,7 @@ class UpdatePaths:
     op_code_dir: str = field(init=False)
     is_valid: bool = field(init=False, default=False)
 
+
     def __post_init__(self, *args, **kwargs):
         """Generates a ch_id and resolves all necessary paths."""
         self.ch_id = sts.time_stamp()
@@ -34,7 +36,7 @@ class UpdatePaths:
         self._mk_target_dirs()
         self.target_path = self._derive_target_path()
         self.op_codes_path = self._find_op_code_file(self.op_codes_path)
-        self.is_valid = self._validate()
+        self.is_valid = self._validate(*args, **kwargs)
 
     def _find_source_path(self, raw_path: str, *args, max_depth: int = 5, **kwargs) -> str | None:
         """Locates the full source path, searching from the project root."""
@@ -78,13 +80,32 @@ class UpdatePaths:
         expected_path = os.path.join(self.op_code_dir, expected_name)
         return expected_path if os.path.isfile(expected_path) else None
 
+    @staticmethod
+    def _create_paths(create_path, *args, hard, pg_name, **kwargs) -> str | None:
+        """
+        Determines the final output path for the modified file.
+        NOTE: create_path not named op_codes_path to avoid name colision
+        """
+        log_dir = os.path.join(sts.update_logs_dir, pg_name)
+        if not hard:
+            target_dir = os.path.join(log_dir, sts.update_logs_temp_dir_name)
+        else:
+            target_dir = sts.package_dir
+        target_path = os.path.join(target_dir, os.path.basename(create_path))
+        return {
+                    'target_path': target_path,
+                    'source_path': create_path,
+                    'op_codes_path': create_path
+        } 
+
+
     def _validate(self, *args, **kwargs) -> bool:
         """Validates that source and op-code files exist for the 'update' phase."""
-        if not self.source_path:
+        if not self.source_path and not self.api == 'create':
             print(f"{Fore.RED}Error:{Style.RESET_ALL} Source file not found.")
             return False
         if not self.op_codes_path:
             path_hint = os.path.join(self.op_code_dir, os.path.basename(self.source_path or ""))
-            print(f"{Fore.RED}Error:{Style.RESET_ALL} Op-code file not found. Expected at: {path_hint}")
+            print(f"Op-code file not found. Expected at: {path_hint}")
             return False
         return True

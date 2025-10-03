@@ -1,18 +1,14 @@
 """
 # C:/Users/lars/python_venvs/packages/acodeon/codeon/test/data/source.py
-This file contains three python classes to be used by the update api.
-The update api takes operation files like op_2025-09-25-00-00-00_source.py and updates this file.
-The updated file is stored as source.py inside the sts.resources_dir/update_logs directory.
+Source file for update api test.
 """
 import os
+import time
 
 class FirstClass:
-    """Tests 'insert_after'. The new method should appear between
-    __init__ and method_after_init.
-    """
 
     def __init__(self, *args, **kwargs):
-        """Initializes the class. Target for 'insert_after'."""
+        """Target for 'insert_after'."""
         pass
 
     def method_after_init(self, *args, **kwargs):

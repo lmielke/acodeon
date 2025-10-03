@@ -1,14 +1,15 @@
-# C:\Users\lars\python_venvs\packages\acodeon\transformer.py
+# C:\Users\lars\python_venvs\packages\acodeon\codeon\transformer.py
 
 import libcst as cst
-from codeon.op_codes import OpCodes, OF, OPObjects
+from typing import List, Tuple, Optional
+from codeon.op_codes import OpCodes, OP_M, OPObjects
 
 
 class ClassTransformer:
     def __init__(
         self,
         in_node: cst.ClassDef,
-        op_codes: list[OpCodes],
+        op_codes: List[Tuple[OpCodes, Optional[cst.CSTNode]]],
         ch_id: str,
         *args,
         **kwargs,
@@ -31,48 +32,45 @@ class ClassTransformer:
         )
 
     def _build_op_maps(self, *args, **kwargs) -> tuple[dict, dict]:
-        removals = {op.target: op for op in self.op_codes if op.op_type == OF.REMOVE}
-        replacements = {
-            op.target: op for op in self.op_codes if op.op_type == OF.REPLACE
-        }
+        removals = {op.target: (op, node) for op, node in self.op_codes if op.op_code == OP_M.RM}
+        replacements = {op.target: (op, node) for op, node in self.op_codes if op.op_code == OP_M.RP}
         return removals, replacements
 
     def _process_method_statement(self, *args, stmt: cst.FunctionDef, **kwargs):
         name = stmt.name.value
         if name in self.removals:
-            self._emit_marker(op=self.removals[name], *args, **kwargs)
-            return
-        if name in self.replacements:
-            op = self.replacements[name]
+            op, node = self.removals[name]
             self._emit_marker(op=op, *args, **kwargs)
-            self.new_body.append(op.node)
             self.tgt_nodes.add(name)
             return
-        for op in [
-            o
-            for o in self.op_codes
-            if o.target == name and o.op_type == OF.INSERT_BEFORE
+        for op, node in [
+            (o, n)
+            for o, n in self.op_codes
+            if o.target == name and o.op_code == OP_M.IB
         ]:
-            self._insert_node(op=op, *args, **kwargs)
-        self.new_body.append(stmt)
+            self._insert_node(op=op, node=node, *args, **kwargs)
+        if name in self.replacements:
+            op, node = self.replacements[name]
+            self._emit_marker(op=op, *args, **kwargs)
+            self.new_body.append(node)
+        else:
+            self.new_body.append(stmt)
         self.tgt_nodes.add(name)
-        for op in [
-            o
-            for o in self.op_codes
-            if o.target == name and o.op_type == OF.INSERT_AFTER
+        for op, node in [
+            (o, n)
+            for o, n in self.op_codes
+            if o.target == name and o.op_code == OP_M.IA
         ]:
-            self._insert_node(op=op, *args, **kwargs)
+            self._insert_node(op=op, node=node, *args, **kwargs)
 
-    def _insert_node(self, *args, op: OpCodes, **kwargs):
-        if (
-            not op.node
-            or not hasattr(op.node, "name")
-            or op.node.name.value in self.tgt_nodes
-        ):
+    def _insert_node(
+        self, *args, op: OpCodes, node: Optional[cst.CSTNode], **kwargs
+    ):
+        if not node or not hasattr(node, "name") or node.name.value in self.tgt_nodes:
             return
         self._emit_marker(op=op, *args, **kwargs)
-        self.new_body.append(op.node)
-        self.tgt_nodes.add(op.node.name.value)
+        self.new_body.append(node)
+        self.tgt_nodes.add(node.name.value)
 
     def _emit_marker(self, *args, op: OpCodes, **kwargs):
         marker_text = op.create_marker(ch_id=self.ch_id)
@@ -82,79 +80,147 @@ class ClassTransformer:
 
 
 class ApplyChangesTransformer(cst.CSTTransformer):
-    import_nodes = {OF.INSERT_AFTER, OF.INSERT_BEFORE}
+    """
+    Applies a series of op-codes to a CST, modifying the tree structure.
+    This transformer handles module-level changes (imports) and class-level
+    changes (methods).
+    """
 
-    def __init__(self, *args, operations: list[OpCodes], ch_id: str | None = None, **kwargs):
-        self.operations = operations
-        self.ch_id = ch_id or "unknown"
+    import_nodes = {OP_M.IA, OP_M.IB}
+
+    def __init__(self, source, ops, *args, ch_id=None, **kwargs):
+        self.source: list = source
+        self.ops: List[Tuple[OpCodes, Optional[cst.CSTNode]]] = ops
+        self.ch_id: str = ch_id or "unknown"
+
+    def _create_marker_node(self, *args, op: OpCodes, **kwargs) -> cst.EmptyLine:
+        marker_text = op.create_marker(ch_id=self.ch_id)
+        return cst.EmptyLine(comment=cst.Comment(marker_text))
+
+    def _apply_targeted_operation(
+        self,
+        op: OpCodes,
+        node: Optional[cst.CSTNode],
+        target_index: int,
+        new_body: list,
+    ):
+        marker_node = self._create_marker_node(op=op)
+        if op.op_code == OP_M.RM:
+            new_body[target_index : target_index + 1] = [marker_node]
+            return
+        if not node:
+            return
+        nodes_to_add = []
+        if op.obj in {OPObjects.CLASS, OPObjects.FUNCTION}:
+            nodes_to_add.extend([cst.EmptyLine(), cst.EmptyLine()])
+        nodes_to_add.append(marker_node)
+        nodes_to_add.append(node)
+        if op.op_code == OP_M.RP:
+            new_body[target_index : target_index + 1] = nodes_to_add
+        elif op.op_code == OP_M.IA:
+            new_body[target_index + 1 : target_index + 1] = nodes_to_add
+        elif op.op_code == OP_M.IB:
+            new_body[target_index:target_index] = nodes_to_add
+
+    def _get_insertion_index(self, *args, body: list, **kwargs) -> int:
+        """Find the best index for a non-targeted import (unwrap SimpleStatementLine)."""
+        last_import_idx, docstring_idx = -1, -1
+        if (
+            body
+            and isinstance(body[0], cst.SimpleStatementLine)
+            and isinstance(body[0].body[0], cst.Expr)
+            and isinstance(body[0].body[0].value, cst.SimpleString)
+        ):
+            docstring_idx = 0
+        for i, stmt in enumerate(body):
+            s = stmt.body[0] if isinstance(stmt, cst.SimpleStatementLine) else stmt
+            if isinstance(s, (cst.Import, cst.ImportFrom)):
+                last_import_idx = i
+        return (
+            (last_import_idx + 1)
+            if last_import_idx != -1
+            else (docstring_idx + 1)
+            if docstring_idx != -1
+            else 0
+        )
+
+    def _find_target_index(self, target_str: str, body: list) -> int:
+        """Find exact target; handle SimpleStatementLine + class/function names."""
+        t = target_str.strip()
+        for i, stmt in enumerate(body):
+            s = stmt.body[0] if isinstance(stmt, cst.SimpleStatementLine) else stmt
+            # match class/function by name (e.g., "SecondClass")
+            if isinstance(s, (cst.ClassDef, cst.FunctionDef)) and s.name.value == t:
+                return i
+            # fallback: exact code match (works for "import os", "from x import y")
+            if cst.Module([s]).code.strip() == t:
+                return i
+        return -1
+
+    def _process_module_operation(
+        self, op: OpCodes, node: Optional[cst.CSTNode], new_body: list, *args, **kwargs
+    ):
+        """Find target and apply op; fallback insert for untargeted imports."""
+        ti = self._find_target_index(op.target, new_body) if op.target else -1
+        if ti != -1:
+            self._apply_targeted_operation(op, node, ti, new_body)
+        elif node and op.obj == OPObjects.IMPORT and op.op_code in self.import_nodes:
+            idx = self._get_insertion_index(*args, body=new_body, **kwargs)
+            new_body.insert(idx, node)
 
     def leave_Module(self, in_node: cst.Module, out_node: cst.Module) -> cst.Module:
-            m_ops = [op for op in self.operations if op.obj == OPObjects.IMPORT]
-            if not m_ops:
-                return out_node
+        module_level_ops = {OPObjects.IMPORT, OPObjects.CLASS, OPObjects.FUNCTION}
+        m_ops = [
+            (op, node) for op, node in self.ops if op.obj in module_level_ops
+        ]
+        if not m_ops:
+            return out_node
+        new_body = list(out_node.body)
+        for op, node in reversed(m_ops):
+            self._process_module_operation(op, node, new_body)
+        return out_node.with_changes(body=tuple(new_body))
 
-            new_body = list(out_node.body)
-
-            # We must iterate in reverse to ensure that our modifications don't
-            # invalidate the indices of statements we still need to find.
-            for op in reversed(m_ops):
-                target_index = -1
-                # Find the specific target statement if one is provided
-                if op.target:
-                    for i, stmt in enumerate(new_body):
-                        # Render the statement to a string for simple comparison
-                        stmt_code = cst.Module([stmt]).code.strip()
-                        if stmt_code == op.target.strip():
-                            target_index = i
-                            break
-
-                if target_index != -1:
-                    # A specific target was found, act on it
-                    if op.op_type == OF.REMOVE:
-                        del new_body[target_index]
-                    elif op.op_type == OF.INSERT_AFTER:
-                        if op.node:
-                            new_body.insert(target_index + 1, op.node)
-                    elif op.op_type == OF.INSERT_BEFORE:
-                        if op.node:
-                            new_body.insert(target_index, op.node)
-                    elif op.op_type == OF.REPLACE:
-                        if op.node:
-                            new_body[target_index] = op.node
-                else:
-                    # Fallback for non-targeted insertions
-                    if op.node and op.op_type in self.import_nodes:
-                        last_import_index = -1
-                        docstring_index = -1
-                        for i, stmt in enumerate(new_body):
-                            if isinstance(stmt, (cst.Import, cst.ImportFrom)):
-                                last_import_index = i
-                            elif (
-                                isinstance(stmt, cst.SimpleStatementLine)
-                                and isinstance(stmt.body[0], cst.Expr)
-                                and isinstance(stmt.body[0].value, cst.SimpleString)
-                            ):
-                                if docstring_index == -1 and last_import_index == -1:
-                                    docstring_index = i
-
-                        if last_import_index != -1:
-                            idx = last_import_index + 1
-                        elif docstring_index != -1:
-                            idx = docstring_index + 1
-                        else:
-                            idx = 0
-                        new_body.insert(idx, op.node)
-
-            return out_node.with_changes(body=tuple(new_body))
-
-    def leave_ClassDef(self, in_node: cst.ClassDef, out_node: cst.ClassDef) -> cst.CSTNode:
-        """
-        Note: this class does not use *args, **kwargs because the signature
-        must match the CSTTransformer method exactly.
-        """
-        op_codes = [op for op in self.operations
+    def leave_ClassDef(
+        self, in_node: cst.ClassDef, out_node: cst.ClassDef
+    ) -> cst.CSTNode:
+        op_codes = [
+            (op, node)
+            for op, node in self.ops
             if op.obj == OPObjects.METHOD and op.class_name == in_node.name.value
         ]
         if not op_codes:
             return out_node
         return ClassTransformer(in_node, op_codes, self.ch_id).transform()
+
+
+class ApplyCreateTransformer(cst.CSTTransformer):
+    """
+    A transformer specifically for the 'create' operation. It finds the
+    package op-code header and replaces it with a new marker that includes
+    the change ID (ch_id).
+    """
+
+    def __init__(self, *args, package_op, ch_id: str, **kwargs):
+        self.package_op = package_op
+        self.ch_id = ch_id
+        self.header_found_and_replaced = False
+
+    def leave_Module(self, original_node: cst.Module, updated_node: cst.Module) -> cst.Module:
+        """Finds and replaces the op-code header comment at the module level."""
+        if self.header_found_and_replaced:
+            return updated_node
+
+        new_header_nodes = []
+        for header_line in updated_node.header:
+            if (
+                header_line.comment
+                and header_line.comment.value.startswith("#--- op_code:")
+            ):
+                new_marker = self.package_op.create_marker(*args, ch_id=self.ch_id)
+                new_comment = cst.Comment(value=new_marker)
+                new_header_nodes.append(header_line.with_changes(comment=new_comment))
+                self.header_found_and_replaced = True
+            else:
+                new_header_nodes.append(header_line)
+
+        return updated_node.with_changes(header=tuple(new_header_nodes))

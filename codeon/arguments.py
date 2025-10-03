@@ -33,6 +33,12 @@ def mk_args():
         help="path to the update/op-code file.",
     )
     parser.add_argument(
+        "-j",
+        "--json-string",
+        type=str,
+        help="JSON string with 'target' and 'code' keys (used with 'create').",
+    )
+    parser.add_argument(
         "--hard",
         action="store_true",
         help="Overwrite the source file directly (used with 'update').",
