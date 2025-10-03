@@ -46,46 +46,57 @@ class CreateEngine:
         self.cstd = CSTDelta(*args, **kwargs)
         self.F = Validator_Formatter()
 
-    def run(self, *args, source_path:str, ch_id:str, **kwargs) -> dict | None:
+    def run(self, *args, source_path: str, ch_id: str, **kwargs) -> dict | None:
         """
-        Executes the end-to-end refactoring process, ensuring the op-code is 'update'.
+        Executes the end-to-end refactoring process, ensuring the op-code is 'create'.
         Returns a status dictionary on success, otherwise None.
         """
-        # Parse the op-code file, which now returns a package_op and module_ops
-        op_codes = self.get_op_codes(*args, source_path=source_path, **kwargs)
-        if op_codes is None:
+        # Parse the op-code file, which returns a package_op and module_ops
+        # The 'op_codes_path' is already in kwargs, so we don't pass it explicitly.
+        op_data = self.get_op_codes(*args, **kwargs)
+        if op_data is None:
             return None
-        # Parse the source file and initialize the transformer with op_codes
+        package_op, op_codes = op_data
+
+        # Parse the source file and initialize the transformer
         self.csts(*args, source_path=source_path, **kwargs)
-        tf = ApplyCreateTransformer(self.csts.body, *args, package_op=op_codes, ch_id=ch_id, **kwargs)
+        tf = ApplyCreateTransformer(
+            self.csts.body, *args, package_op=package_op, ch_id=ch_id, **kwargs
+        )
+
         # Generate the adjusted code from the transformed CST
         out_code = self.F(self.csts.body.visit(tf).code, *args, **kwargs)
-        self._write_output(out_code, op_codes, *args, **kwargs)
+        self._write_output(out_code, *args, **kwargs)
         return {
-                "source_file": os.path.basename(source_path),
-                "ch_id": ch_id,
-                "op_codes": [op.to_dict() for op, node in op_codes],
-            }
+            "source_file": os.path.basename(source_path),
+            "ch_id": ch_id,
+            "op_codes": [op.to_dict() for op, node in op_codes],
+        }
 
-    def get_op_codes(self, *args, op_codes_path: str, source_path:str, **kwargs) -> list[dict]:
+    def get_op_codes(self, *args, op_codes_path: str, **kwargs) -> tuple | None:
         self.cstd(*args, source_path=op_codes_path, **kwargs)
         package_op, op_codes = self.cstd.body
-        # Verify that a package op-code of type 'update' is present
+        # Verify that a package op-code of type 'create' is present
         if not package_op or package_op.op_code != OP_P.CREATE:
-            print(f"{Fore.RED}RefactorEngine.run Error:{Fore.RESET} "
-                    f"{op_codes_path= } requires package op-code 'update' header. "
-                    f"but has {package_op.op_code = }")
+            print(
+                f"{Fore.RED}CreateEngine.run Error:{Fore.RESET} "
+                f"{op_codes_path=} requires package op-code 'create' header. "
+                f"but has {package_op.op_code = }"
+            )
             return None
-        return op_codes
+        return package_op, op_codes
 
     @staticmethod
-    def _write_output(code: str, *args, target_path: str, **kwargs) -> bool:
+    def _write_output(code: str, *args, target_path: str, **kwargs) -> None:
         """Writes the final transformed code to the target file path."""
         with open(target_path, "w", encoding="utf-8") as f:
             f.write(code)
-        short_target = target_path.replace(os.path.expanduser('~'), '~')
-        print(  f"{Fore.GREEN}Successfully wrote target file:{Fore.RESET} "
-                f"{short_target}")
+        short_target = target_path.replace(os.path.expanduser("~"), "~")
+        print(
+            f"{Fore.GREEN}Successfully wrote target file:{Fore.RESET} "
+            f"{short_target}"
+        )
+
 
 class JsonEngine:
     """

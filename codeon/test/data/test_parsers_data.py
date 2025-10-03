@@ -13,7 +13,7 @@ class FirstClass:
 
     def method_after_init(self, *args, **kwargs):
         """This method should remain after the inserted method."""
-        return "after"
+        return "method_to_insert_after was added before this method during update."
 
 
 class SecondClass:
@@ -21,15 +21,15 @@ class SecondClass:
 
     def method_before_replace(self, *args, **kwargs):
         """This method should remain before the inserted/replaced method."""
-        return "before"
+        return "This will stay the first method in the class."
 
     def method_to_replace(self, *args, **kwargs):
         """This method is the target for 'insert_before' and 'replace'."""
-        return "This is the original method."
+        return "This method must NOT be visible after update."
 
     def method_after_replace(self, *args, **kwargs):
         """This method should remain untouched after all operations."""
-        return "after"
+        return "This will stay the last method in the class."
 
 
 class ThirdClass:
@@ -37,7 +37,7 @@ class ThirdClass:
 
     def method_before_remove(self, *args, **kwargs):
         """This method should remain after the removal."""
-        return "before"
+        return "first method 1 of 2"
 
     def method_to_remove(self, *args, **kwargs):
         """This method is targeted for removal."""
@@ -45,4 +45,4 @@ class ThirdClass:
 
     def method_after_remove(self, *args, **kwargs):
         """This method should remain after the removal."""
-        return "after"
+        return "last method, 2 of 2"

@@ -49,8 +49,8 @@ class CSTDelta(CSTParserBase):
 
     def parse(self, *args, **kwargs) -> tuple:
         """Parses both package and module op-codes from the source text."""
+        self.V.validate_package_op_header(self.source_text, *args, **kwargs)
         package_op = self._extract_package_op(*args, **kwargs)
-        print(f"{package_op.op_code.value = }")
         module_ops = self._extract_module_ops(*args, **kwargs)
         return package_op, module_ops
 
@@ -112,3 +112,21 @@ class Validations:
                 f"{Fore.GREEN}Parsed {len(ops)} ops from ops_file.{Style.RESET_ALL}"
             )
         return ops
+
+    def validate_package_op_header(self, source_text: str, *args, **kwargs) -> None:
+        """Checks if the first non-empty line is a package op-code."""
+        stripped_source = source_text.strip()
+        if not stripped_source:
+            print(f"{Fore.RED}FATAL ERROR: Op-code file is empty.{Style.RESET_ALL}")
+            exit(1)
+
+        package_token = PackageOpCodes().start_token
+        if not stripped_source.startswith(package_token):
+            first_line = source_text.splitlines()[0].strip()
+            print(
+                f"{Fore.RED}FATAL ERROR: The first line of the op-code file "
+                f"must be a package op-code.{Style.RESET_ALL}"
+            )
+            print(f"  Expected start: '{package_token}'")
+            print(f"  Actual line:    '{first_line}'")
+            exit(1)

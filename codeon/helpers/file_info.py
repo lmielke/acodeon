@@ -1,6 +1,6 @@
 # C:\Users\lars\python_venvs\packages\acodeon\codeon\helpers\file_info.py
 
-import os
+import os, shutil
 from dataclasses import dataclass, field
 from colorama import Fore, Style
 import codeon.settings as sts
@@ -24,7 +24,7 @@ class UpdatePaths:
     # --- Derived Paths ---
     ch_id: str = field(init=False)
     target_path: str = field(init=False)
-    log_dir: str = field(init=False)
+    temp_dir: str = field(init=False)
     op_code_dir: str = field(init=False)
     is_valid: bool = field(init=False, default=False)
 
@@ -34,6 +34,7 @@ class UpdatePaths:
         self.ch_id = sts.time_stamp()
         self.source_path = self._find_source_path(self.source_path)
         self._mk_target_dirs()
+        self._create_restore_dirs()
         self.target_path = self._derive_target_path()
         self.op_codes_path = self._find_op_code_file(self.op_codes_path)
         self.is_valid = self._validate(*args, **kwargs)
@@ -59,17 +60,39 @@ class UpdatePaths:
 
     def _mk_target_dirs(self, *args, **kwargs) -> None:
         """Creates the log and op-code directories based on package name."""
-        self.log_dir = os.path.join(sts.update_logs_dir, self.pg_name)
-        self.op_code_dir = os.path.join(self.log_dir, sts.update_logs_op_code_files_dir_name)
+        self.temp_dir = sts.temp_dir(self.pg_name)
+        os.makedirs(self.temp_dir, exist_ok=True)
+        self.op_code_dir = sts.op_code_dir(self.pg_name)
         os.makedirs(self.op_code_dir, exist_ok=True)
 
+    def _create_restore_dirs(self, *args, **kwargs) -> None:
+        """
+        Creates the restore package directory if it doesn't exist.
+        NOTE: first resolution action would be a 'git reset --hard'
+        This will contain all package coding in case of a git reset not working.
+        """
+        if not os.path.exists(sts.restore_package_dir(self.pg_name)):
+            shutil.copytree(self.project_dir, sts.restore_package_dir(self.pg_name))
+
+    @staticmethod
+    def _hard_restore_dirs(self, *args, **kwargs) -> None:
+        """
+        Runs a restore if a git reset --hard did not work.
+        """
+        print(f"{Fore.RED}Restoring package from backup...{Style.RESET_ALL}")
+        print(  f"{Fore.RED}Before running restore, backup the existing {Fore.RESET}"
+                f"{self.project_dir = }")
+        confim = input(f"{Fore.YELLOW}Restore will overwrite {self.project_dir = }! "
+                        f"(y/n): {Style.RESET_ALL}")
+        if confim.lower() == 'y':
+            shutil.rmtree(self.project_dir)
+        shutil.copytree(sts.restore_package_dir(self.pg_name), self.project_dir)
+        
     def _derive_target_path(self, *args, **kwargs) -> str | None:
         """Determines the final output path for the modified file."""
         if not self.source_path: return None
         if self.hard: return self.source_path
-        temp_dir = os.path.join(self.log_dir, sts.update_logs_temp_dir_name)
-        os.makedirs(temp_dir, exist_ok=True)
-        return os.path.join(temp_dir, os.path.basename(self.source_path))
+        return os.path.join(sts.temp_files_dir(self.pg_name), os.path.basename(self.source_path))
 
     def _find_op_code_file(self, raw_path: str | None, *args, **kwargs) -> str | None:
         """Finds the op-code file, prioritizing a raw path over discovery."""
@@ -81,16 +104,13 @@ class UpdatePaths:
         return expected_path if os.path.isfile(expected_path) else None
 
     @staticmethod
-    def _create_paths(create_path, *args, hard, pg_name, **kwargs) -> str | None:
+    def _create_paths(create_path, *args, hard, pg_name, package_dir, **kwargs) -> str | None:
         """
         Determines the final output path for the modified file.
         NOTE: create_path not named op_codes_path to avoid name colision
         """
-        log_dir = os.path.join(sts.update_logs_dir, pg_name)
-        if not hard:
-            target_dir = os.path.join(log_dir, sts.update_logs_temp_dir_name)
-        else:
-            target_dir = sts.package_dir
+        temp_dir = sts.temp_dir(pg_name)
+        target_dir = package_dir if hard else sts.temp_files_dir(pg_name)
         target_path = os.path.join(target_dir, os.path.basename(create_path))
         return {
                     'target_path': target_path,

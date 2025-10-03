@@ -145,11 +145,13 @@ class PackageOpCodes(OpCodes):
         self.start_token, self.end_token = "#--- ", " ---#"
         self._enum_map = {"op_code": OP_P, "obj": OPObjects}
 
-    def __call__(self, *args, head: str, **kwargs):
+    def __call__(self, *args, head: str, verbose:int=0, **kwargs):
         """Parses the header and validates the state."""
-        unrecognized = self.load_string(*args, head=head, **kwargs)
+        unrecognized = self.load_string(*args, head=head, verbose=verbose, **kwargs)
         assert not unrecognized, f"Unknown fields: {unrecognized}"
         self.validate_state(*args, **kwargs)
+        if verbose:
+            print(f"{Fore.GREEN}Loaded package op-code:{Style.RESET_ALL} {self.to_dict()}")
 
     def validate_state(self, *args, **kwargs):
         """Ensures the op-code is valid for a package operation."""

@@ -49,6 +49,12 @@ def mk_args():
         action="store_true",
         help="Format the output file using 'black' (used with 'update').",
     )
+    parser.add_argument(
+        "-t",
+        "--testing",
+        action="store_true",
+        help="Run tests on the output file to veryfy correct syntax.",
+    )
 
     # For 'server' API
     parser.add_argument(

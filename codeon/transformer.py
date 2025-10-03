@@ -6,14 +6,7 @@ from codeon.op_codes import OpCodes, OP_M, OPObjects
 
 
 class ClassTransformer:
-    def __init__(
-        self,
-        in_node: cst.ClassDef,
-        op_codes: List[Tuple[OpCodes, Optional[cst.CSTNode]]],
-        ch_id: str,
-        *args,
-        **kwargs,
-    ):
+    def __init__(self, in_node: cst.ClassDef, op_codes: List, ch_id: str, *args, **kwargs):
         self.in_node = in_node
         self.op_codes = op_codes
         self.ch_id = ch_id
@@ -43,11 +36,7 @@ class ClassTransformer:
             self._emit_marker(op=op, *args, **kwargs)
             self.tgt_nodes.add(name)
             return
-        for op, node in [
-            (o, n)
-            for o, n in self.op_codes
-            if o.target == name and o.op_code == OP_M.IB
-        ]:
+        for op, node in [(o, n) for o, n in self.op_codes if o.target == name and o.op_code == OP_M.IB]:
             self._insert_node(op=op, node=node, *args, **kwargs)
         if name in self.replacements:
             op, node = self.replacements[name]
@@ -56,16 +45,10 @@ class ClassTransformer:
         else:
             self.new_body.append(stmt)
         self.tgt_nodes.add(name)
-        for op, node in [
-            (o, n)
-            for o, n in self.op_codes
-            if o.target == name and o.op_code == OP_M.IA
-        ]:
+        for op, node in [(o, n) for o, n in self.op_codes if o.target == name and o.op_code == OP_M.IA]:
             self._insert_node(op=op, node=node, *args, **kwargs)
 
-    def _insert_node(
-        self, *args, op: OpCodes, node: Optional[cst.CSTNode], **kwargs
-    ):
+    def _insert_node(self, *args, op: OpCodes, node: Optional[cst.CSTNode], **kwargs):
         if not node or not hasattr(node, "name") or node.name.value in self.tgt_nodes:
             return
         self._emit_marker(op=op, *args, **kwargs)
@@ -93,18 +76,12 @@ class ApplyChangesTransformer(cst.CSTTransformer):
         self.ops: List[Tuple[OpCodes, Optional[cst.CSTNode]]] = ops
         self.ch_id: str = ch_id or "unknown"
 
-    def _create_marker_node(self, *args, op: OpCodes, **kwargs) -> cst.EmptyLine:
+    def _create_marker_node(self, op: OpCodes, *args, **kwargs) -> cst.EmptyLine:
         marker_text = op.create_marker(ch_id=self.ch_id)
         return cst.EmptyLine(comment=cst.Comment(marker_text))
 
-    def _apply_targeted_operation(
-        self,
-        op: OpCodes,
-        node: Optional[cst.CSTNode],
-        target_index: int,
-        new_body: list,
-    ):
-        marker_node = self._create_marker_node(op=op)
+    def _apply_op(self, op: OpCodes, node: cst.CSTNode, target_index: int, new_body: list):
+        marker_node = self._create_marker_node(op)
         if op.op_code == OP_M.RM:
             new_body[target_index : target_index + 1] = [marker_node]
             return
@@ -163,16 +140,14 @@ class ApplyChangesTransformer(cst.CSTTransformer):
         """Find target and apply op; fallback insert for untargeted imports."""
         ti = self._find_target_index(op.target, new_body) if op.target else -1
         if ti != -1:
-            self._apply_targeted_operation(op, node, ti, new_body)
+            self._apply_op(op, node, ti, new_body)
         elif node and op.obj == OPObjects.IMPORT and op.op_code in self.import_nodes:
             idx = self._get_insertion_index(*args, body=new_body, **kwargs)
             new_body.insert(idx, node)
 
     def leave_Module(self, in_node: cst.Module, out_node: cst.Module) -> cst.Module:
         module_level_ops = {OPObjects.IMPORT, OPObjects.CLASS, OPObjects.FUNCTION}
-        m_ops = [
-            (op, node) for op, node in self.ops if op.obj in module_level_ops
-        ]
+        m_ops = [(op, node) for op, node in self.ops if op.obj in module_level_ops]
         if not m_ops:
             return out_node
         new_body = list(out_node.body)
@@ -180,12 +155,8 @@ class ApplyChangesTransformer(cst.CSTTransformer):
             self._process_module_operation(op, node, new_body)
         return out_node.with_changes(body=tuple(new_body))
 
-    def leave_ClassDef(
-        self, in_node: cst.ClassDef, out_node: cst.ClassDef
-    ) -> cst.CSTNode:
-        op_codes = [
-            (op, node)
-            for op, node in self.ops
+    def leave_ClassDef(self, in_node: cst.ClassDef, out_node: cst.ClassDef) -> cst.CSTNode:
+        op_codes = [(op, node) for op, node in self.ops
             if op.obj == OPObjects.METHOD and op.class_name == in_node.name.value
         ]
         if not op_codes:
@@ -216,7 +187,7 @@ class ApplyCreateTransformer(cst.CSTTransformer):
                 header_line.comment
                 and header_line.comment.value.startswith("#--- op_code:")
             ):
-                new_marker = self.package_op.create_marker(*args, ch_id=self.ch_id)
+                new_marker = self.package_op.create_marker(ch_id=self.ch_id)
                 new_comment = cst.Comment(value=new_marker)
                 new_header_nodes.append(header_line.with_changes(comment=new_comment))
                 self.header_found_and_replaced = True

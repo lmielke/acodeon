@@ -40,7 +40,6 @@ def main(*args, **kwargs):
     runs api if legidemit and prints outputs
     """
     kwargs = arguments.mk_args().__dict__
-
     # kwargs are vakidated against enforced contract
     kwargs = contracts.checks(*args, **kwargs)
     if kwargs.get("api") != "help":

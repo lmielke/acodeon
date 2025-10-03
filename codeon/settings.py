@@ -69,13 +69,12 @@ resources_dir = os.path.expanduser(f'~{os.sep}.{package_name}')
 if not os.path.exists(resources_dir):
     os.makedirs(resources_dir)
 
-update_logs_dir = os.path.join(resources_dir, 'update_logs')
-update_logs_temp_dir_name = 'temp_files'
-update_temp_dir = os.path.join(resources_dir, update_logs_temp_dir_name)
-update_logs_op_code_files_dir_name = 'op_code_files'
-update_temp_test_dir = os.path.join(update_logs_dir, package_name, update_logs_temp_dir_name)
-print(f"{update_temp_test_dir = }")
-update_logs_test_dir = os.path.join(update_logs_dir, package_name, update_logs_op_code_files_dir_name)
+# the following directories refer to the temporary package structure and logs
+# the resulting paths depend on the work_path or cwd this package is run inside
+temp_dir = lambda pg_name: os.path.join(resources_dir, 'update_logs', pg_name)
+op_code_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'op_code_files')
+temp_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'temp_files')
+restore_package_dir = lambda pg_name: os.path.join(temp_dir(pg_name), pg_name)
 
 user_settings_name = "settings.yml"
 user_settings_path = os.path.join(resources_dir, user_settings_name)
