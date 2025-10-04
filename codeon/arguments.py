@@ -27,10 +27,10 @@ def mk_args():
         help="path to the source file to update.",
     )
     parser.add_argument(
-        "-o",
-        "--op_codes_path",
+        "-c",
+        "--cr_integration_path",
         type=str,
-        help="path to the update/op-code file.",
+        help="path to the update/cr_integration_file.",
     )
     parser.add_argument(
         "-j",

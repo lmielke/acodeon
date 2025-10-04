@@ -40,34 +40,34 @@ class Updater:
                 status_dict = RefactorEngine(*args, **kwargs).run(*args, **kwargs)
 
         if status_dict:
-            self._archive_op_code_file(*args, **kwargs)
+            self._archive_cr_cr_file(*args, **kwargs)
         self._log_result(*args, status=bool(status_dict), **kwargs)
         return status_dict
 
-    def _stage_from_json(self, *args, op_code_dir: str, verbose:int=0, **kwargs) -> str | None:
-        """Parses a JSON string and writes the content to a temporary op-code file."""
+    def _stage_from_json(self, *args, cr_integration_dir: str, verbose:int=0, **kwargs) -> str | None:
+        """Parses a JSON string and writes the content to a temporary cr_integration_file."""
         data = JsonEngine().parse(*args, **kwargs)
         if not data:
             print(f"{Fore.RED}Failed to parse JSON string.{Style.RESET_ALL}")
             return None
         try:
-            target_path = os.path.join(op_code_dir, data["target"])
+            target_path = os.path.join(cr_integration_dir, data["target"])
             with open(target_path, "w", encoding="utf-8") as f:
                 f.write(data["code"])
             if verbose:
-                print(f"{Fore.GREEN}Staged op-code file: {target_path}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}Staged cr_integration_file: {target_path}{Style.RESET_ALL}")
             return target_path
         except (KeyError, IOError) as e:
-            print(f"{Fore.RED}Failed to stage op-code file: {e}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Failed to stage cr_integration_file: {e}{Style.RESET_ALL}")
             return None
 
-    def _archive_op_code_file(self, *args, op_codes_path: str, ch_id: str, **kwargs):
-        """Renames the op-code file by prepending 'op_[ch_id]_'."""
-        if not all([op_codes_path, os.path.exists(op_codes_path)]):
+    def _archive_cr_cr_file(self, *args, cr_integration_path: str, ch_id: str, **kwargs):
+        """Renames the cr_integration_file by prepending 'cr_[ch_id]_'."""
+        if not all([cr_integration_path, os.path.exists(cr_integration_path)]):
             return
-        dir, fname = os.path.split(op_codes_path)
-        if not fname.startswith("op_"):
-            os.rename(op_codes_path, os.path.join(dir, f"op_{ch_id}_{fname}"))
+        dir, fname = os.path.split(cr_integration_path)
+        if not fname.startswith("cr_"):
+            os.rename(cr_integration_path, os.path.join(dir, f"cr_{ch_id}_{fname}"))
 
     def _log_result(self, *args, status: bool, hard: bool, **kwargs):
         """Prints the final result to the console."""

@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple
 import libcst as cst
 from colorama import Fore, Style
 
-from codeon.op_codes import ModuleOpCodes, PackageOpCodes, OP_M, OPObjects
+from codeon.cr_headers import UnitCrHeads, PackageCrHeads, OP_M, CRTypes
 
 
 class CSTParserBase(ABC):
@@ -40,24 +40,24 @@ class CSTSource(CSTParserBase):
 
 class CSTDelta(CSTParserBase):
     """
-    Parses an 'op-code' file for an optional package-level operation
+    Parses an cr_integration_file for an optional package-level operation
     and a list of executable module-level operations.
     """
 
-    module_op_finder = re.compile(r"(#-- op_code:.*?--#)(.*?)(?=#--|$)", re.DOTALL)
-    package_op_finder = re.compile(r"^(#--- op_code:.*?---#)", re.MULTILINE)
+    module_cr_finder = re.compile(r"(#-- cr_op:.*?--#)(.*?)(?=#--|$)", re.DOTALL)
+    package_cr_finder = re.compile(r"^(#--- cr_op:.*?---#)", re.MULTILINE)
 
     def parse(self, *args, **kwargs) -> tuple:
-        """Parses both package and module op-codes from the source text."""
-        self.V.validate_package_op_header(self.source_text, *args, **kwargs)
+        """Parses both package and unit cr-headers from the source text."""
+        self.V.validate_package_cr_header(self.source_text, *args, **kwargs)
         package_op = self._extract_package_op(*args, **kwargs)
         module_ops = self._extract_module_ops(*args, **kwargs)
         return package_op, module_ops
 
-    def _extract_package_op(self, *args, **kwargs) -> Optional[PackageOpCodes]:
-        """Finds and parses a single package op-code header, if present."""
-        if match := self.package_op_finder.search(self.source_text):
-            op = PackageOpCodes()
+    def _extract_package_op(self, *args, **kwargs) -> Optional[PackageCrHeads]:
+        """Finds and parses a single package cr-header, if present."""
+        if match := self.package_cr_finder.search(self.source_text):
+            op = PackageCrHeads()
             op(head=match.group(1).strip())
             return op
         return None
@@ -65,9 +65,9 @@ class CSTDelta(CSTParserBase):
     def _extract_module_ops(self, *args, **kwargs ) -> List:
         """Extracts all module-level operations from the source text."""
         ops = []
-        for head, body in self.module_op_finder.findall(self.source_text):
+        for head, body in self.module_cr_finder.findall(self.source_text):
             body_node = self._parse_body(body)
-            op = ModuleOpCodes()
+            op = UnitCrHeads()
             op(head=head.strip())
             validated_op = self.V._validate_op(op, head, body_node)
             ops.append((validated_op, body_node))
@@ -83,21 +83,21 @@ class CSTDelta(CSTParserBase):
 
 class Validations:
 
-    def _validate_op(self, op: ModuleOpCodes, head: str, node: Optional[cst.CSTNode], *args, **kwargs) -> ModuleOpCodes:
-        """Tries to create and validate an ModuleOpCodes object. Halts on failure."""
+    def _validate_op(self, op: UnitCrHeads, head: str, node: Optional[cst.CSTNode], *args, **kwargs) -> UnitCrHeads:
+        """Tries to create and validate an UnitCrHeads object. Halts on failure."""
         try:
             req_targets = {OP_M.IB, OP_M.IA, OP_M.RP, OP_M.RM}
             req_nodes = {OP_M.IB, OP_M.IA, OP_M.RP}
 
-            if op.op_code in req_targets and op.obj != OPObjects.IMPORT and not op.target:
-                raise ValueError(f"Op '{op.op_code.value}' requires a 'target'.")
-            if op.op_code in req_nodes and node is None:
-                raise ValueError(f"Op '{op.op_code.value}' requires a code block.")
-            if op.op_code == OP_M.RM and node is not None:
+            if op.cr_op in req_targets and op.cr_type != CRTypes.IMPORT and not op.cr_anc:
+                raise ValueError(f"Op '{op.cr_op.value}' requires a 'target'.")
+            if op.cr_op in req_nodes and node is None:
+                raise ValueError(f"Op '{op.cr_op.value}' requires a code block.")
+            if op.cr_op == OP_M.RM and node is not None:
                 raise ValueError("Op 'remove' must not have a code block.")
             return op
         except (ValueError, AttributeError) as e:
-            print(f"{Fore.RED}FATAL ERROR in op-code file:{Style.RESET_ALL}\n  {e}")
+            print(f"{Fore.RED}FATAL ERROR in cr_integration_file:{Style.RESET_ALL}\n  {e}")
             print(f"  Header: '{head}'")
             print("Halting execution.")
             exit(1)
@@ -113,19 +113,19 @@ class Validations:
             )
         return ops
 
-    def validate_package_op_header(self, source_text: str, *args, **kwargs) -> None:
-        """Checks if the first non-empty line is a package op-code."""
+    def validate_package_cr_header(self, source_text: str, *args, **kwargs) -> None:
+        """Checks if the first non-empty line is a package cr_head."""
         stripped_source = source_text.strip()
         if not stripped_source:
-            print(f"{Fore.RED}FATAL ERROR: Op-code file is empty.{Style.RESET_ALL}")
+            print(f"{Fore.RED}FATAL ERROR: cr_integration_file is empty.{Style.RESET_ALL}")
             exit(1)
 
-        package_token = PackageOpCodes().start_token
+        package_token = PackageCrHeads().start_token
         if not stripped_source.startswith(package_token):
             first_line = source_text.splitlines()[0].strip()
             print(
-                f"{Fore.RED}FATAL ERROR: The first line of the op-code file "
-                f"must be a package op-code.{Style.RESET_ALL}"
+                f"{Fore.RED}FATAL ERROR: The first line of the cr_integration_file "
+                f"must be a package cr_head.{Style.RESET_ALL}"
             )
             print(f"  Expected start: '{package_token}'")
             print(f"  Actual line:    '{first_line}'")

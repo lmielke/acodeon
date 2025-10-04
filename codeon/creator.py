@@ -3,7 +3,7 @@ import libcst as cst
 from colorama import Fore, Style
 from codeon.parsers import CSTSource, CSTDelta
 from codeon.transformer import ApplyCreateTransformer
-from codeon.op_codes import OP_P
+from codeon.cr_headers import OP_P
 from codeon.engine import Validator_Formatter
 import codeon.settings as sts
 
@@ -38,7 +38,7 @@ class Formatter:
 
 
 class CreateEngine:
-    """Orchestrates the creation of a new file from an op-code source."""
+    """Orchestrates the creation of a new file from an cr_integration_file."""
 
     def __init__(self, *args, **kwargs):
         """Initializes the engine with parsers and a formatter."""
@@ -48,15 +48,15 @@ class CreateEngine:
 
     def run(self, *args, source_path: str, ch_id: str, **kwargs) -> dict | None:
         """
-        Executes the end-to-end refactoring process, ensuring the op-code is 'create'.
+        Executes the end-to-end refactoring process, ensuring the cr-operation is 'create'.
         Returns a status dictionary on success, otherwise None.
         """
-        # Parse the op-code file, which returns a package_op and module_ops
-        # The 'op_codes_path' is already in kwargs, so we don't pass it explicitly.
-        op_data = self.get_op_codes(*args, **kwargs)
-        if op_data is None:
+        # Parse the cr_integration_file, which returns a package_op and module_ops
+        # The 'cr_integration_path' is already in kwargs, so we don't pass it explicitly.
+        cr_data = self.get_cr_ops(*args, **kwargs)
+        if cr_data is None:
             return None
-        package_op, op_codes = op_data
+        package_op, cr_ops = cr_data
 
         # Parse the source file and initialize the transformer
         self.csts(*args, source_path=source_path, **kwargs)
@@ -70,21 +70,21 @@ class CreateEngine:
         return {
             "source_file": os.path.basename(source_path),
             "ch_id": ch_id,
-            "op_codes": [op.to_dict() for op, node in op_codes],
+            "cr_ops": [op.to_dict() for op, node in cr_ops],
         }
 
-    def get_op_codes(self, *args, op_codes_path: str, **kwargs) -> tuple | None:
-        self.cstd(*args, source_path=op_codes_path, **kwargs)
-        package_op, op_codes = self.cstd.body
-        # Verify that a package op-code of type 'create' is present
-        if not package_op or package_op.op_code != OP_P.CREATE:
+    def get_cr_ops(self, *args, cr_integration_path: str, **kwargs) -> tuple | None:
+        self.cstd(*args, source_path=cr_integration_path, **kwargs)
+        package_op, cr_ops = self.cstd.body
+        # Verify that a package cr-operation of type 'create' is present
+        if not package_op or package_op.cr_op != OP_P.CREATE:
             print(
                 f"{Fore.RED}CreateEngine.run Error:{Fore.RESET} "
-                f"{op_codes_path=} requires package op-code 'create' header. "
-                f"but has {package_op.op_code = }"
+                f"{cr_integration_path=} requires package cr-operation 'create' header. "
+                f"but has {package_op.cr_op = }"
             )
             return None
-        return package_op, op_codes
+        return package_op, cr_ops
 
     @staticmethod
     def _write_output(code: str, *args, target_path: str, **kwargs) -> None:

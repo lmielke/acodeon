@@ -26,12 +26,12 @@ class TestParsers(unittest.TestCase):
         source_data_dir = sts.test_data_dir
         source_name = "test_parsers.py"
         original_source_file = os.path.join(source_data_dir, source_name)
-        original_op_file = os.path.join(source_data_dir, f"op_2025-09-25-00-00-00_{source_name}" )
+        original_cr_file = os.path.join(source_data_dir, f"cr_2025-09-25-00-00-00_{source_name}" )
 
         cls.source_file = os.path.join(cls.test_dir, source_name)
-        cls.op_file = os.path.join(cls.test_dir, f"op_2025-09-25-00-00-00_{source_name}")
+        cls.cr_file = os.path.join(cls.test_dir, f"cr_2025-09-25-00-00-00_{source_name}")
         shutil.copy(original_source_file, cls.source_file)
-        shutil.copy(original_op_file, cls.op_file)
+        shutil.copy(original_cr_file, cls.cr_file)
 
     @classmethod
     def tearDownClass(cls):
@@ -49,9 +49,9 @@ class TestParsers(unittest.TestCase):
 
     def test_cst_delta_initialization_and_parsing(self):
         """WHY: Ensure CSTDelta loads and parses operations correctly."""
-        parser = CSTDelta(op_codes_path=self.op_file)
+        parser = CSTDelta(cr_integration_path=self.cr_file)
         self.assertIn(
-            "#-- op_code: remove, target: ThirdClass.method_to_remove", parser.source
+            "#-- cr_op: remove, target: ThirdClass.method_to_remove", parser.source
         )
 
         operations = parser.parse()

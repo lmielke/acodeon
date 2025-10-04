@@ -4,15 +4,15 @@ This module contains context managers to create temporary objects
 
 Example:
 
-@helpers.test_setup(temp_file=None, temp_chdir='temp_file', temp_pw=None) 
+@helpers.test_setup(stage_file=None, temp_chdir='stage_file', temp_pw=None) 
 def test_my_fuction(self, *args, **kwargs):
     run test 
     ...
 
-temp_file:      creates a temporary folder/file in the test_data_dir
+stage_file:      creates a temporary folder/file in the test_data_dir
                 folder is named lke the test function here it would be (test_my_fuction)
 temp_chdir:     changes the current working directory to the provided directory
-                if string 'temp_file' is provided then, temp_chdir = os.path.basename(temp_file)
+                if string 'stage_file' is provided then, temp_chdir = os.path.basename(stage_file)
 temp_pw:        sets the environment variables DATASAFEKEY and DATAKEY to empty strings
                 this is currently not implemented
 """
@@ -66,7 +66,7 @@ def temp_chdir(temp_data_path, *args, temp_chdir: str = None, **kwargs) -> None:
         None
     """
     origin = os.getcwd()
-    if temp_chdir == 'temp_file':
+    if temp_chdir == 'stage_file':
         if os.path.isfile(temp_data_path):
             temp_chdir = os.path.dirname(temp_data_path)
         elif os.path.isdir(temp_data_path):
@@ -157,14 +157,14 @@ def test_setup(*args, temp_pass:str=None, **kwargs):
 
 
 @contextmanager
-def temp_test_file(temp_dir_name: str, *args, temp_file: str, **kwargs) -> None:
+def temp_test_file(temp_dir_name: str, *args, stage_file: str, **kwargs) -> None:
     """
     Creates a temp dir named like test_func_name_to_be_tested and copies test data to it
     returns the full path to the copied file. The tempDir is removed when context is left.
     Example:
     Use this to create an isolated test data source named like the test function.
     The test file can then be read, changed, destroyed.
-    temp_file, temp_dir_name = 'safe_one.json', 'test__prep_api_params'
+    stage_file, temp_dir_name = 'safe_one.json', 'test__prep_api_params'
     results in:
         1. created tempDir like sts.test_data_dir/temp_dir_name
             tempDir = sts.test_data_dir/test__prep_api_params/
@@ -175,12 +175,12 @@ def temp_test_file(temp_dir_name: str, *args, temp_file: str, **kwargs) -> None:
         run_any_test_using(temp_path)
     """
     # no file is needed, but this context manager still has to run
-    if temp_file is None: temp_file = 'empty.txt'
-    source_path = os.path.join(sts.test_data_dir, temp_file)
+    if stage_file is None: stage_file = 'empty.txt'
+    source_path = os.path.join(sts.test_data_dir, stage_file)
     assert os.path.isfile(source_path), f"file {source_path} not found"
     try:
         tempDir = os.path.join(sts.test_data_dir, temp_dir_name)
-        temp_path = os.path.join(tempDir, temp_file)
+        temp_path = os.path.join(tempDir, stage_file)
         if not os.path.isdir(tempDir):
             os.makedirs(tempDir)
         shutil.copyfile(source_path, temp_path)

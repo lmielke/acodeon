@@ -15,7 +15,7 @@ class UpdatePaths:
 
     # --- Inputs (will be overwritten with resolved paths) ---
     source_path: str | None = None
-    op_codes_path: str | None = None
+    cr_integration_path: str | None = None
     hard: bool = False
     project_dir: str = field(default_factory=os.getcwd)
     pg_name: str = "default_package"
@@ -25,7 +25,7 @@ class UpdatePaths:
     ch_id: str = field(init=False)
     target_path: str = field(init=False)
     temp_dir: str = field(init=False)
-    op_code_dir: str = field(init=False)
+    cr_integration_dir: str = field(init=False)
     is_valid: bool = field(init=False, default=False)
 
 
@@ -36,7 +36,7 @@ class UpdatePaths:
         self._mk_target_dirs()
         self._create_restore_dirs()
         self.target_path = self._derive_target_path()
-        self.op_codes_path = self._find_op_code_file(self.op_codes_path)
+        self.cr_integration_path = self._find_cr_cr_file(self.cr_integration_path)
         self.is_valid = self._validate(*args, **kwargs)
 
     def _find_source_path(self, raw_path: str, *args, max_depth: int = 5, **kwargs) -> str | None:
@@ -59,11 +59,11 @@ class UpdatePaths:
         return None
 
     def _mk_target_dirs(self, *args, **kwargs) -> None:
-        """Creates the log and op-code directories based on package name."""
+        """Creates the log and change-request directories based on package name."""
         self.temp_dir = sts.temp_dir(self.pg_name)
         os.makedirs(self.temp_dir, exist_ok=True)
-        self.op_code_dir = sts.op_code_dir(self.pg_name)
-        os.makedirs(self.op_code_dir, exist_ok=True)
+        self.cr_integration_dir = sts.cr_integration_dir(self.pg_name)
+        os.makedirs(self.cr_integration_dir, exist_ok=True)
 
     def _create_restore_dirs(self, *args, **kwargs) -> None:
         """
@@ -92,40 +92,40 @@ class UpdatePaths:
         """Determines the final output path for the modified file."""
         if not self.source_path: return None
         if self.hard: return self.source_path
-        return os.path.join(sts.temp_files_dir(self.pg_name), os.path.basename(self.source_path))
+        return os.path.join(sts.stage_files_dir(self.pg_name), os.path.basename(self.source_path))
 
-    def _find_op_code_file(self, raw_path: str | None, *args, **kwargs) -> str | None:
-        """Finds the op-code file, prioritizing a raw path over discovery."""
+    def _find_cr_cr_file(self, raw_path: str | None, *args, **kwargs) -> str | None:
+        """Finds the cr_integration_file, prioritizing a raw path over discovery."""
         if raw_path and os.path.isfile(raw_path):
             return raw_path
         if not self.source_path: return None
         expected_name = os.path.basename(self.source_path)
-        expected_path = os.path.join(self.op_code_dir, expected_name)
+        expected_path = os.path.join(self.cr_integration_dir, expected_name)
         return expected_path if os.path.isfile(expected_path) else None
 
     @staticmethod
     def _create_paths(create_path, *args, hard, pg_name, package_dir, **kwargs) -> str | None:
         """
         Determines the final output path for the modified file.
-        NOTE: create_path not named op_codes_path to avoid name colision
+        NOTE: create_path not named cr_integration_path to avoid name colision
         """
         temp_dir = sts.temp_dir(pg_name)
-        target_dir = package_dir if hard else sts.temp_files_dir(pg_name)
+        target_dir = package_dir if hard else sts.stage_files_dir(pg_name)
         target_path = os.path.join(target_dir, os.path.basename(create_path))
         return {
                     'target_path': target_path,
                     'source_path': create_path,
-                    'op_codes_path': create_path
+                    'cr_integration_path': create_path
         } 
 
 
     def _validate(self, *args, **kwargs) -> bool:
-        """Validates that source and op-code files exist for the 'update' phase."""
+        """Validates that source and cr_integration_files exist for the 'update' phase."""
         if not self.source_path and not self.api == 'create':
             print(f"{Fore.RED}Error:{Style.RESET_ALL} Source file not found.")
             return False
-        if not self.op_codes_path:
-            path_hint = os.path.join(self.op_code_dir, os.path.basename(self.source_path or ""))
+        if not self.cr_integration_path:
+            path_hint = os.path.join(self.cr_integration_dir, os.path.basename(self.source_path or ""))
             print(f"Op-code file not found. Expected at: {path_hint}")
             return False
         return True

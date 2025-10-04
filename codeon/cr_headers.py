@@ -1,4 +1,4 @@
-# C:\Users\lars\python_venvs\packages\acodeon\codeon\op_codes.py
+# C:\Users\lars\python_venvs\packages\acodeon\codeon\cr_ops.py
 
 import os, re, yaml
 from enum import Enum
@@ -8,11 +8,11 @@ from colorama import Fore, Style
 
 
 @dataclass
-class OP_CODE_FIELDS:
-    OP_CODE: str = "op_code"
-    OBJ: str = "obj"
-    TARGET: str = "target"
-    INSTALL: str = "install"
+class CR_OBJ_FIELDS:
+    CR_OP: str = "cr_op"       # cr operation to perform (i.e. insert_before, insert_after, replace, remove)
+    CR_TYPE: str = "cr_type"    # type of object to operate on (i.e. import, method, function, class, raw, file)
+    CR_ANC: str = "cr_anc"      # anchor text to locate position in the target module
+    INSTALL: str = "install"    # whether to install a package (True/False)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -33,29 +33,29 @@ class OP_S(str, Enum):
     INSTALL, UNINSTALL = "install", "uninstall"
 
 
-class OPObjects(str, Enum):
-    """Target object to perform the operation on."""
+class CRTypes(str, Enum):
+    """Target cr_object to perform the operation on."""
     IMPORT, METHOD, FUNCTION, CLASS, RAW, FILE = (
         "import", "method", "function", "class", "raw", "file"
     )
 
 
-class OpCodes:
-    """Represents the state of a parsed op-code header using YAML parsing."""
+class CrHeads:
+    """Represents the state of a parsed cr-header using YAML parsing."""
 
     def __init__(self, *args, **kwargs):
-        """Initializes all potential op-code fields to None."""
-        self.field_order = list(OP_CODE_FIELDS().to_dict().values())
+        """Initializes all potential cr-header fields to None."""
+        self.field_order = list(CR_OBJ_FIELDS().to_dict().values())
         for field in self.field_order:
             setattr(self, field, None)
         self.start_token, self.end_token = "#-- ", " --#"
-        self._enum_map = {"op_code": OP_M, "obj": OPObjects}
+        self._enum_map = {"cr_op": OP_M, "cr_type": CRTypes}
 
     def load_string(self, *args, head: str, **kwargs):
-        """Loads and parses an op-code header string."""
+        """Loads and parses an cr-header string."""
         content_str = head[len(self.start_token) : -len(self.end_token)].strip()
         data = yaml.safe_load("\n".join(p.strip() for p in content_str.split(",")))
-        assert isinstance(data, dict), "Parsed op-code header is not a dictionary."
+        assert isinstance(data, dict), "Parsed cr-header is not a dictionary."
         return self.parse_data(data, *args, **kwargs)
 
     def parse_data(self, data: dict, *args, **kwargs):
@@ -82,13 +82,13 @@ class OpCodes:
 
     def validate_state(self, *args, **kwargs):
         """
-        Validates the cross field state of the instance. For example, when obj is an import, 
+        Validates the cross field state of the instance. For example, when cr_obj is an import, 
         then target must be a valid import statement.
         """
-        if self.obj == OPObjects.IMPORT and self.target:
+        if self.cr_type == CRTypes.IMPORT and self.cr_anc:
             import_pattern = r"^(import\s+\w+|from\s+\w+(\.\w+)*\s+import\s+\w+)$"
-            if not re.match(import_pattern, self.target.strip()):
-                raise ValueError(f"Invalid import statement in target: '{self.target}'")
+            if not re.match(import_pattern, self.cr_anc.strip()):
+                raise ValueError(f"Invalid import statement in target: '{self.cr_anc}'")
         
     def to_dict(self, *args, **kwargs) -> dict:
         """Internal method to build a dictionary from the instance's state."""
@@ -108,8 +108,8 @@ class OpCodes:
         return f"{self.start_token}{', '.join(parts)}{self.end_token}"
 
 
-class ModuleOpCodes(OpCodes):
-    """Represents a module-level op-code with module-specific logic."""
+class UnitCrHeads(CrHeads):
+    """Represents in module unit change-request(s) with cr-type specific logic."""
 
     def __init__(self, *args, **kwargs):
         """Initializes by adding the class_name attribute."""
@@ -125,25 +125,25 @@ class ModuleOpCodes(OpCodes):
 
     def derive_class_name(self, *args, **kwargs):
         """Extracts class name from target string for method operations."""
-        if self.target and "." in self.target and self.obj == OPObjects.METHOD:
-            self.class_name, self.target = self.target.split(".", 1)
+        if self.cr_anc and "." in self.cr_anc and self.cr_type == CRTypes.METHOD:
+            self.class_name, self.cr_anc = self.cr_anc.split(".", 1)
             # we add class_name to field_order before ch_id
-        elif self.obj == OPObjects.CLASS and self.target:
-            self.class_name = self.target
+        elif self.cr_type == CRTypes.CLASS and self.cr_anc:
+            self.class_name = self.cr_anc
         else:
             self.class_name = None
         if self.class_name is not None:
             self.field_order.insert(-2, "class_name")
 
 
-class PackageOpCodes(OpCodes):
-    """Represents a package-level op-code for file operations."""
+class PackageCrHeads(CrHeads):
+    """Represents a package-level change-request for file/module operations."""
 
     def __init__(self, *args, **kwargs):
         """Initializes with package-specific tokens and enum maps."""
         super().__init__(*args, **kwargs)
         self.start_token, self.end_token = "#--- ", " ---#"
-        self._enum_map = {"op_code": OP_P, "obj": OPObjects}
+        self._enum_map = {"cr_op": OP_P, "cr_type": CRTypes}
 
     def __call__(self, *args, head: str, verbose:int=0, **kwargs):
         """Parses the header and validates the state."""
@@ -151,12 +151,12 @@ class PackageOpCodes(OpCodes):
         assert not unrecognized, f"Unknown fields: {unrecognized}"
         self.validate_state(*args, **kwargs)
         if verbose:
-            print(f"{Fore.GREEN}Loaded package op-code:{Style.RESET_ALL} {self.to_dict()}")
+            print(f"{Fore.GREEN}Loaded package change-request:{Style.RESET_ALL} {self.to_dict()}")
 
     def validate_state(self, *args, **kwargs):
-        """Ensures the op-code is valid for a package operation."""
+        """Ensures the change-request is valid for a package operation."""
         super().validate_state(*args, **kwargs)
-        if self.obj != OPObjects.FILE:
-            raise ValueError(f"Package op-code must have 'obj: {OPObjects.FILE.value}'.")
-        if not self.target or not isinstance(self.target, str):
-            raise ValueError("Package op-code requires a non-empty 'target' file name.")
+        if self.cr_type != CRTypes.FILE:
+            raise ValueError(f"Package change-request must have 'cr_obj: {CRTypes.FILE.value}'.")
+        if not self.cr_anc or not isinstance(self.cr_anc, str):
+            raise ValueError("Package change-request requires a non-empty 'target' file name.")

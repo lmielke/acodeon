@@ -71,9 +71,9 @@ if not os.path.exists(resources_dir):
 
 # the following directories refer to the temporary package structure and logs
 # the resulting paths depend on the work_path or cwd this package is run inside
-temp_dir = lambda pg_name: os.path.join(resources_dir, 'update_logs', pg_name)
-op_code_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'op_code_files')
-temp_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'temp_files')
+temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
+cr_integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_integration_files')
+stage_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'stage_files')
 restore_package_dir = lambda pg_name: os.path.join(temp_dir(pg_name), pg_name)
 
 user_settings_name = "settings.yml"
