@@ -1,111 +1,21 @@
+#--- cr_op: create, cr_type: file, cr_anc: creator.py, cr_id: 2025-10-08-16-12-30 ---#
 import os, re, json, shutil, subprocess
 import libcst as cst
 from colorama import Fore, Style
-from codeon.parsers import CSTSource, CSTDelta
-from codeon.transformer import ApplyCreateTransformer
-from codeon.cr_headers import OP_P
-from codeon.engine import Validator_Formatter
+from codeon.headers import OP_P
 import codeon.settings as sts
-
-class Formatter:
-    """Handles code formatting, specifically with Black."""
-
-    def format_with_black(self, code: str, *args, verbose: int = 0, **kwargs) -> str:
-        """Formats a string of Python code using the 'black' code formatter."""
-        if not shutil.which("black"):
-            if verbose >= 1:
-                print(
-                    "WARNING: --black flag used, but 'black' is not in the system's PATH."
-                )
-            return code
-
-        try:
-            process = subprocess.run(
-                ["black", "-q", "-"],
-                input=code,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                check=True,
-            )
-            if verbose >= 2:
-                print("Formatted output with black.")
-            return process.stdout
-        except (subprocess.CalledProcessError, Exception) as e:
-            if verbose >= 1:
-                print(f"Error running black formatter: {e}")
-            return code
-
-
-class CreateEngine:
-    """Orchestrates the creation of a new file from an cr_integration_file."""
-
-    def __init__(self, *args, **kwargs):
-        """Initializes the engine with parsers and a formatter."""
-        self.csts = CSTSource(*args, **kwargs)
-        self.cstd = CSTDelta(*args, **kwargs)
-        self.F = Validator_Formatter()
-
-    def run(self, *args, source_path: str, ch_id: str, **kwargs) -> dict | None:
-        """
-        Executes the end-to-end refactoring process, ensuring the cr-operation is 'create'.
-        Returns a status dictionary on success, otherwise None.
-        """
-        # Parse the cr_integration_file, which returns a package_op and module_ops
-        # The 'cr_integration_path' is already in kwargs, so we don't pass it explicitly.
-        cr_data = self.get_cr_ops(*args, **kwargs)
-        if cr_data is None:
-            return None
-        package_op, cr_ops = cr_data
-
-        # Parse the source file and initialize the transformer
-        self.csts(*args, source_path=source_path, **kwargs)
-        tf = ApplyCreateTransformer(
-            self.csts.body, *args, package_op=package_op, ch_id=ch_id, **kwargs
-        )
-
-        # Generate the adjusted code from the transformed CST
-        out_code = self.F(self.csts.body.visit(tf).code, *args, **kwargs)
-        self._write_output(out_code, *args, **kwargs)
-        return {
-            "source_file": os.path.basename(source_path),
-            "ch_id": ch_id,
-            "cr_ops": [op.to_dict() for op, node in cr_ops],
-        }
-
-    def get_cr_ops(self, *args, cr_integration_path: str, **kwargs) -> tuple | None:
-        self.cstd(*args, source_path=cr_integration_path, **kwargs)
-        package_op, cr_ops = self.cstd.body
-        # Verify that a package cr-operation of type 'create' is present
-        if not package_op or package_op.cr_op != OP_P.CREATE:
-            print(
-                f"{Fore.RED}CreateEngine.run Error:{Fore.RESET} "
-                f"{cr_integration_path=} requires package cr-operation 'create' header. "
-                f"but has {package_op.cr_op = }"
-            )
-            return None
-        return package_op, cr_ops
-
-    @staticmethod
-    def _write_output(code: str, *args, target_path: str, **kwargs) -> None:
-        """Writes the final transformed code to the target file path."""
-        with open(target_path, "w", encoding="utf-8") as f:
-            f.write(code)
-        short_target = target_path.replace(os.path.expanduser("~"), "~")
-        print(
-            f"{Fore.GREEN}Successfully wrote target file:{Fore.RESET} "
-            f"{short_target}"
-        )
 
 
 class JsonEngine:
     """
-    A robust JSON parser that attempts multiple strategies to extract a valid
-    dictionary from a potentially malformed or polluted string.
+    Progressive JSON recovery: try strict first, then minimal safe repairs.
+    WHY: tolerate LLM/paste noise while converging to valid JSON deterministically.
     """
 
-    def __init__(self, *args, **kwargs):
-        """Initializes the engine with a list of parsing strategies."""
+    def __init__(self, *args, json_string: str, **kwargs):
+        self.json_string = json_string
+        self.data = None
+        self.staged_path = None
         self.strategies = [
             self._strategy_strict_parse,
             self._strategy_find_json_block,
@@ -113,48 +23,106 @@ class JsonEngine:
             self._strategy_fix_quotes_and_commas,
         ]
 
+    def __call__(self, *args, **kwargs) -> dict | None:
+        # if no json_string provided, skip processing (caller has to condition on this)
+        if not self.json_string:
+            return self
+        self.parse(*args, **kwargs)
+        if not self.data:
+            return self
+        # we also save the json to json_path for reference
+        self.json_path = self.backup_json(*args, **kwargs)
+        # if data is found we save it to cr_integration_dir
+        self.staged_path = self.stage_from_json(*args, **kwargs)
+        return self
+
     def parse(self, *args, **kwargs) -> dict | None:
-        """
-        Attempts to parse the input string using a series of strategies.
+        for s in self.strategies:
+            d = s(*args, **kwargs)
+            if d is not None and d.get(sts.json_target):
+                self.data = d
 
-        Returns:
-            A dictionary if parsing is successful, otherwise None.
-        """
-        for strategy in self.strategies:
-            data = strategy(*args, **kwargs)
-            if data and isinstance(data, dict):
-                return data
-        return None
-
-    def _strategy_strict_parse(self, *args, json_string: str, **kwargs) -> dict | None:
-        """Strategy 1: Tries a direct, strict parse. The ideal case."""
+    def _strategy_strict_parse(self, *args, **kwargs) -> dict | None:
         try:
-            return json.loads(json_string)
+            return json.loads(self.json_string)
         except json.JSONDecodeError:
             return None
 
-    def _strategy_find_json_block(self, *args, json_string: str, **kwargs) -> dict | None:
-        """Strategy 2: Finds a JSON block enclosed in `{}` within a larger string."""
-        match = re.search(r"\{[\s\S]*\}", json_string)
-        if match:
-            return self._strategy_strict_parse(*args, json_string=match.group(0), **kwargs)
-        return None
+    def _strategy_find_json_block(self, *args, **kwargs) -> dict | None:
+        m = re.search(r"\{[\s\S]*\}", self.json_string)
+        if not m:
+            return None
+        prev = self.json_string
+        self.json_string = m.group(0)
+        d = self._strategy_strict_parse(*args, **kwargs)
+        self.json_string = self.json_string if d is not None else prev
+        return d
 
-    def _strategy_fix_trailing_commas(self, *args, json_string: str, **kwargs) -> dict | None:
-        """Strategy 3: Removes trailing commas that are invalid in JSON."""
-        cleaned_string = re.sub(r",\s*([\}\]])", r"\1", json_string)
-        if cleaned_string != json_string:
-            return self.parse(*args, json_string=cleaned_string, **kwargs)
-        return None
+    def _strategy_fix_trailing_commas(self, *args, **kwargs) -> dict | None:
+        cleaned = re.sub(r",\s*([\}\]])", r"\1", self.json_string)
+        if cleaned == self.json_string:
+            return None
+        prev = self.json_string
+        self.json_string = cleaned
+        d = self._strategy_strict_parse(*args, **kwargs)
+        self.json_string = self.json_string if d is not None else prev
+        return d
 
-    def _strategy_fix_quotes_and_commas(self, *args, json_string: str, **kwargs) -> dict | None:
-        """
-        Strategy 4: A more aggressive approach to fix common LLM mistakes like
-        single quotes for keys/strings and missing commas.
-        """
-        # Note: This is a simplified and aggressive fix.
-        # 1. Add commas between "} and "{", "]" and "[" etc.
-        fixed_commas = re.sub(r'(["\]\}])\s*\n\s*(["\[\{])', r'\1,\n\2', json_string)
-        # 2. Convert Python-style single quotes to JSON double quotes.
-        fixed_quotes = fixed_commas.replace("'", '"')
-        return self._strategy_strict_parse(*args, json_string=fixed_quotes, **kwargs)
+    def _strategy_fix_quotes_and_commas(self, *args, **kwargs) -> dict | None:
+        s = re.sub(r'(["\]\}])\s*\n\s*(["\[\{])', r"\1,\n\2", self.json_string)
+        s = s.replace("'", '"')
+        prev = self.json_string
+        self.json_string = s
+        d = self._strategy_strict_parse(*args, **kwargs)
+        self.json_string = self.json_string if d is not None else prev
+        return d
+
+    def stage_from_json(self, *args, verbose: int = 0, **kwargs ) -> str | None:
+        try:
+                        
+            cr_integration_file = self.test_path('staging', *args, **kwargs)
+            if cr_integration_file == sts.exists_status:
+                return sts.exists_status
+            with open(cr_integration_file, "w", encoding="utf-8") as f:
+                f.write(self.data[sts.json_content])
+            if verbose:
+                print(f"{Fore.GREEN}Staged: {Style.RESET_ALL}{cr_integration_file = }")
+            return cr_integration_file
+        except (KeyError, IOError) as e:
+            print(f"{Fore.RED}Failed to stage cr_integration_file: "
+                  f"{e}{Style.RESET_ALL}")
+            return None
+
+    def backup_json(self, *args, **kwargs):
+        # we save the json into json_path
+        json_path = self.test_path('json', *args, **kwargs)
+        if json_path == sts.exists_status:
+            return sts.exists_status
+        with open(json_path, "w", encoding="utf-8") as f_json:
+            f_json.write(self.json_string)
+        return json_path
+
+    def test_path(self, phase, *args, cr_id, pg_name, **kwargs):
+        out_path = ""
+        if phase == 'json':
+            files_dir = sts.json_files_dir(pg_name)
+            out_path = os.path.join(
+                                        files_dir, 
+                                        sts.json_file_name(self.data[sts.json_target], cr_id)
+                                        )
+            if os.path.exists(out_path):
+                return sts.exists_status
+        elif phase == 'staging':
+            files_dir = sts.cr_integration_dir(pg_name)
+            out_path = os.path.join(
+                        files_dir, 
+                        sts.cr_integration_archived_name(self.data[sts.json_target], cr_id)
+                                )
+            if os.path.exists(out_path):
+                return sts.exists_status
+            else:
+                out_path = os.path.join(files_dir, self.data[sts.json_target])
+                if os.path.exists(out_path):
+                    return sts.exists_status
+        os.makedirs(files_dir, exist_ok=True)
+        return out_path

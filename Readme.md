@@ -1,12 +1,13 @@
 # User Readme for Acodeon package
 
 ## Acodeon Description
-Acodeon is a automated CR (change request) integration engine using the python libcst library. 
-It is designed to allow LLMs to create and maintain codebases by using a automated integration
-mechanism. The updates are provided inside using a cr_integration file.
+Acodeon is an automated CR (change request) integration engine using the Python `libcst` library. 
+It is designed to allow LLMs to create and maintain codebases by using an automated,
+modularized (methods, classes, etc.) integration mechanism. 
+The updates are provided as full modules, classes, methods, or imports using a `__cr_integration_file__`.
 
 ## Installation Instructions
-Currently acodeon is available as a github repo. In order to install it, you will need to clone the repo and install the dependencies using pipenv.
+Currently Acodeon is available as a GitHub repo. To install it, clone the repo and install the dependencies using Pipenv.
 
 ```powershell
 git clone ...
@@ -17,171 +18,168 @@ pipenv install
 ## How to run codeon
 ```shell
 codeon create -s 'json_string' [ --hard ] [ -b ]
-codeon update -s source_file_name.py [ --hard ] [ -b ]
+codeon update -s target_file_name.py [ --hard ] [ -b ]
+codeon prompt_info -s target_file_name -i package -v 2
+codeon code -s target_file_name.py -p '__CR Prompt__ text or file name' [--hard] [ -b ]
 ```
 
-## Execution Description
-- codeon uses apis to integrate change-requests to the target file
-- The integrated target files are saved to ~/.codeon/cr_logs/package_name/... unless the --hard flag is used.
-- <span style="color:red; font-weight:bold;">STRONG NOTICE: The --hard = True flag creates, updates or removes the target file directly!</span>
-- The -b = True flag will run black code formatter on the updated file
+## How it Works
+- codeon uses APIs to integrate change-requests into the target file
+- The integrated target files are saved to `~/.codeon/cr_logs/package_name/...` unless the `--hard` flag is used.
+- <span style="color:red; font-weight:bold;">STRONG NOTICE: The `--hard=True` flag creates, updates, or removes the target file directly!</span>
+- The `-b=True` flag runs the `black` formatter on the updated file.
 
 ## Available APIs
-- create: creates a new target file from an __'cr-integration'__ file
-    - which contains a single package __'cr-header'__ as first line: __create__
-    - which for every cr_block contains the full module/file to be created.
-    - the contained code must be a valid python file ready to be tested
+- **create:** creates a new target file from a `__cr_integration_file__`
+- **update:** updates an existing target file from a change-request file
+- **prompt_info:** generates the prompt context for the target package to be send to the LLM
+- **code:** integrates all prior steps: generates the prompt, calls the LLM, creates/updates the target file
 
-- update: updates an existing target file from an change-request file
-    - contains the single package __'cr-header'__ as first line: __update__
-    - contains all changes with respect to a single target file or target module
-    - contains multiple package cr-headers: insert_after, insert_before, replace, remove
-    - every package cr-header is followed by a code snippet to be created or updated.
-    - each snippet must be valid python (import, function, class, method) ready to be tested
-    - a remove change-request comes without a code snippet, but only the package cr-header
+
+Each file must begin with a **package cr-header** defining the operation (create, update).  
+Each code block in the file has its own **unit cr-header** (insert_before, insert_after, replace, remove).
 
 ## What are cr-headers?
-CR header are commented instruction lines inside the __cr_integration_file__ that allow the acodeon apis
-to perform necessary operations on the target file that integrate the requested changes. 
+CR headers are commented instruction lines inside the `__cr_integration_file__` that tell the Acodeon APIs
+how to modify the target file.
 
-There is two types of __'cr-headers'__:
-- Mandatory package cr-header: first line in the __cr_integration_file__, indicates the type of change-request
-to be performed on the specified target file (create, update).
-- module package cr: indicates the operation to be performed on a specific code object i.e. class or method ect. (insert_after, insert_before, replace, remove)
+### Types of cr-headers
+#### Package cr-header (mandatory)
+Indicates the file-level operation to perform:
+```python
+#--- cr_op: create, cr_type: file, cr_anc: test_parsers_data.py ---#
+```
 
-## Which cr-header fields are there?
-- cr_op:str the operation to be performed (create, update, insert_after, insert_before, replace, remove)
-- cr_type:str the type of code block/object the operation is performed on (file, import, class, method)
-- cr_anchor:str the spacial target of the cr_op, (can be the target itself (replace, remove) or a spacial anchor point (insert_before, insert_after))
-- install:bool (optional, default is False) indicates to the acodeon engine that a block requires installation of libraries and or dependencies.
+#### Unit cr-header
+Indicates the operation on a specific code object:
+```python
+#-- cr_op: insert_after, cr_type: import, cr_anc: import time, install: False --#
+```
+
+### Common cr-header fields
+- **cr_op:** operation (create, update, insert_after, insert_before, replace, remove)
+- **cr_type:** object type (file, import, class, method, etc.)
+- **cr_anc:** the spatial anchor (target or insertion point)
+- **install:** optional bool; whether a dependency install is required
 
 ## Creating a change-request
-The change-request process consists of 4 sequential steps:
-1. A change request is written by the customer. It describes the requested changes and contains the cr-context both in full and in relevant detail.
-2. From the change-request a __cr_integration_file__ is created by a LLM and delivered in form of a json object.
-3. Acodeon processes the json object to create the actual __cr_integration_file__.
-4. The target file is then machine processed (created, updated or removed) based on the __cr_integration_file__. The target file contains the final updated code in acordance with the CR definitions and guidelines.
+The process consists of four steps:
 
-### Examples:
-NOTE: to be processed properly every __cr_integration_file__ must have a specific machine readable structure with to the letter precision. 
-The package cr-header as first line of its content!
-This is a example of a crating __cr_integration_file__ (Note: first line package 'cr-header': create). 
-It is provided in order to be processed by the 'create api'. The 'create api' will parse 
-the single change-request and create the target file.
-The init file must be a valid properly formatted executable python .py file.
+1. A user writes a **CR Prompt** describing desired code changes (with `prompt_info`).
+2. The LLM generates a **__cr_integration_file__** and delivers it as a JSON string.
+3. codeon processes the JSON to create the `__cr_integration_file__`.
+4. codeon then applies it to create/update/remove the target file according to CQ:EX-LLM standards.
+**CQ:EX-LLM** = Code Quality Excellence — concise, deterministic, professional Python generation.
 
+---
 
+## Worked Example (headers.py)
+
+### Start state (reduced)
 ```python
-#--- cr_op: create, cr_type: file, cr_anchor: test_parsers_data.py ---#
-"""
-# MANDATORY: package change-request to indicate the operation and the file/module at hand
-# NOTE: The package change-request starts with # 3 dashes like: #---
-"""
-import os
-import time
+from dataclasses import asdict, dataclass
+from enum import Enum
+import yaml
 
-class FirstClass:
+@dataclass
+class CR_OBJ_FIELDS:
+    CR_OP: str = "cr_op"
+    CR_TYPE: str = "cr_type"
+    CR_ANC: str = "cr_anc"
+    INSTALL: str = "install"
 
+class OP_M(str, Enum):
+    IB, IA, RP, RM = "insert_before", "insert_after", "replace", "remove"
+
+class CRTypes(str, Enum):
+    IMPORT, METHOD, FUNCTION, CLASS, FILE = (
+        "import", "method", "function", "class", "file"
+    )
+
+class CrHeads:
     def __init__(self, *args, **kwargs):
-        """Target for 'insert_after'."""
-        pass
+        for _, v in asdict(CR_OBJ_FIELDS()).items():
+            setattr(self, v, None)
+        self.start_token, self.end_token = "#-- ", " --#"
+        self._enum_map = {"cr_op": OP_M, "cr_type": CRTypes}
 
-    def method_after_init(self, *args, **kwargs):
-        """This method should remain after the inserted method."""
-        return "method_to_insert_after was added before this method during update."
+    def load_string(self, *args, head: str, **kwargs):
+        s = head[len(self.start_token):-len(self.end_token)].strip()
+        d = yaml.safe_load("\\n".join(p.strip() for p in s.split(","))) or {}
+        for k, v in d.items():
+            em = self._enum_map.get(k)
+            setattr(self, k, em(v) if em else v)
 
-
-class SecondClass:
-    """Tests 'insert_before' and 'replace' operations."""
-
-    def method_before_replace(self, *args, **kwargs):
-        """This method should remain before the inserted/replaced method."""
-        return "This will stay the first method in the class."
-
-    def method_to_replace(self, *args, **kwargs):
-        """This method is the target for 'insert_before' and 'replace'."""
-        return "This method must NOT be visible after update."
-
-    def method_after_replace(self, *args, **kwargs):
-        """This method should remain untouched after all operations."""
-        return "This will stay the last method in the class."
-
-
-class ThirdClass:
-    """Tests the 'remove' operation."""
-
-    def method_before_remove(self, *args, **kwargs):
-        """This method should remain after the removal."""
-        return "first method 1 of 2"
-
-    def method_to_remove(self, *args, **kwargs):
-        """This method is targeted for removal."""
-        print("This method will be removed.")
-
-    def method_after_remove(self, *args, **kwargs):
-        """This method should remain after the removal."""
-        return "last method, 2 of 2"
+class UnitCrHeads(CrHeads):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 ```
 
-This is a example of a updating __cr_integration_file__ with all currently available unit cr-operations. It is provided
-in order to be processed by the 'update api'. The 'update api' will parse the package cr-header (update) and then
-sequentially apply the changes of all contained unit cr-headers (insert_before, insert_after, ...).
+### CR Prompt example
+```markdown
+Please update headers.py:
+- Add PackageCrHeads using "#--- " … " ---#" tokens and print a green message when a package header loads.
+- Add CrHeads.create_marker(cr_id: str|None) -> str to render headers.
+- Replace CrHeads.load_string with a stricter version that asserts dict shape.
+- Remove the private coercion helper.
+- Insert colorama import via an insert_after on "import os".
+- Keep methods short and deterministic.
+NOTE: CQ:EX-LLM to generate professional Python.
+```
+
+### __cr_integration_file__
+```python
+#--- cr_op: update, cr_type: file, cr_anc: headers.py ---#
+
+#-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False --#
+from colorama import Fore, Style
+
+#-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string --#
+def load_string(self, *args, head: str, **kwargs):
+    """Strict parse to avoid silent drift."""
+    s = head[len(self.start_token):-len(self.end_token)].strip()
+    d = yaml.safe_load("\\n".join(p.strip() for p in s.split(",")))
+    assert isinstance(d, dict), "Parsed cr-header is not a dict."
+    for k, v in d.items():
+        em = self._enum_map.get(k)
+        setattr(self, k, em(v) if em else v)
+
+#-- cr_op: remove, cr_type: method, class_name: CrHeads, cr_anc: _coerce --#
+
+#-- cr_op: insert_after, cr_type: method, cr_anc: CrHeads.__init__ --#
+def create_marker(self, *args, cr_id: str | None = None, **kwargs) -> str:
+    """Render normalized header for traceable diffs."""
+    keys = ("cr_op", "cr_type", "cr_anc", "install")
+    data = {k: getattr(self, k) for k in keys if getattr(self, k, None) is not None}
+    if cr_id:
+        data["cr_id"] = cr_id
+    parts = [f"{k}: {getattr(v, 'value', v)}" for k, v in data.items()]
+    return f"{self.start_token}{', '.join(parts)}{self.end_token}"
+
+#-- cr_op: insert_after, cr_type: class, cr_anc: CrHeads --#
+class PackageCrHeads(CrHeads):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_token, self.end_token = "#--- ", " ---#"
+
+    def __call__(self, *args, head: str, **kwargs):
+        self.load_string(head=head)
+        print(f"{Fore.GREEN}Loaded package cr-header{Style.RESET_ALL}")
+```
+
+### __cr_integration_json__
+```json
+{
+  "target": "headers.py",
+  "content": "#--- cr_op: update, cr_type: file, cr_anc: headers.py ---#\\n\ #-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False --#\\n\ from colorama import Fore, Style\\n\ \\n\ #-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string --#\\n\ def load_string(self, *args, head: str, **kwargs):\\n\ \\\"\\\"\\\"Strict parse to avoid silent drift.\\\"\\\"\\\"\\n\ s = head[len(self.start_token):-len(self.end_token)].strip()\\n\ d = yaml.safe_load(\\\"\\\\n\\\".join(p.strip() for p in s.split(\\\",\\\")))\\n\ assert isinstance(d, dict), \\\"Parsed cr-header is not a dict.\\\"\\n\ for k, v in d.items():\\n\ em = self._enum_map.get(k)\\n\ setattr(self, k, em(v) if em else v)\\n\ \\n\ #-- cr_op: remove, cr_type: method, class_name: CrHeads, cr_anc: _coerce --#\\n\ \\n\ #-- cr_op: insert_after, cr_type: method, cr_anc: CrHeads.__init__ --#\\n\ def create_marker(self, *args, cr_id: str|None=None, **kwargs) -> str:\\n\ \\\"\\\"\\\"Render normalized header for traceable diffs.\\\"\\\"\\\"\\n\ keys = (\\\"cr_op\\\",\\\"cr_type\\\",\\\"cr_anc\\\",\\\"install\\\")\\n\ data = {k: getattr(self,k) for k in keys if getattr(self,k,None) is not None}\\n\ if cr_id: data[\\\"cr_id\\\"] = cr_id\\n\ parts = [f\\\"{k}: {getattr(v,'value',v)}\\\" for k,v in data.items()]\\n\ return f\\\"{self.start_token}{', '.join(parts)}{self.end_token}\\\"\\n\ \\n\ #-- cr_op: insert_after, cr_type: class, cr_anc: CrHeads --#\\n\ class PackageCrHeads(CrHeads):\\n\ def __init__(self, *args, **kwargs):\\n\ super().__init__(*args, **kwargs)\\n\ self.start_token, self.end_token = \\\"#--- \\", \\\" ---#\\\"\\n\ def __call__(self, *args, head: str, **kwargs):\\n\ self.load_string(head=head)\\n\ print(f\\\"{Fore.GREEN}Loaded package cr-header{Style.RESET_ALL}\\\")\\n"
+}
+```
+
+### Target State
+The resulting updated `headers.py` will contain all requested changes, each clearly marked with its respective CR headers.
+Example markers:
 
 ```python
-#--- cr_op: update, cr_type: file, cr_anchor: test_parsers_data.py ---#
-# MANDATORY: package change-request is to indicate the operation and points to the file/module
-# NOTE: The package change-request is the first line and starts with # 3 dashes like: #---
-
-# module package cr with changes to the source code
-#-- cr_op: insert_after, cr_type: importcr_anchor: import time, install: False --#
-import re # this import will be inserted before the import time
-
-#-- cr_op: insert_after, cr_type: method, cr_anchor: FirstClass.__init__ --#
-def method_to_insert_after(self, *args, **kwargs) -> None:
-    """Should be inserted after FirstClass.__init__."""
-    print("This method was successfully inserted after __init__.")
-
-#-- cr_op: insert_before, cr_type: method, cr_anchor: SecondClass.method_to_replace --#
-def method_to_insert_before(self, *args, code: str, verbose: int, **kwargs) -> bool:
-    """Should be inserted before SecondClass.method_to_replace."""
-    print("This method was successfully inserted before method_to_replace.")
-
-#-- cr_op: insert_before, cr_type: method, cr_anchor: SecondClass.method_to_replace --#
-def another_method_to_insert_before(self, *args, **kwargs) -> None:
-    """Another placeholder for a future insertion method."""
-    print("This method was successfully inserted after method_to_insert_before.")
-
-#-- cr_op: replace, cr_type: method, cr_anchor: SecondClass.method_to_replace --#
-@staticmethod
-def method_to_replace(*args, **kwargs):
-    """A second method to demonstrate replaces."""
-    return "original method was successfully replaced"
-
-#-- cr_op: remove, cr_type: method, cr_anchor: ThirdClass.method_to_remove --#
-
-#-- cr_op: insert_after, cr_type: class,cr_anchort: SecondClass --#
-class InsertedClass:
-    """A new class inserted after SecondClass to demonstrate class insertion."""
-
-    def __init__(self, *args, **kwargs) -> str:
-        """This method was inserted as part of the class insert."""
-        self.was_inserted = True
-
-    def another_method(self, *args, **kwargs) -> str:
-        """This second method was inserted as part of the class insert."""
-        return "This class was successfully inserted after SecondClass."
-
+#-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False, cr_id: 2025-10-09-12-32-22 --#
+#-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string, cr_id: 2025-10-09-12-32-22 --#
 ```
-
-## __cr_integration_file__ serialization
-The __cr_integration_file__ content is delivered via the LLM api as a json.loads readable json object. The json object
-contains two fields:
-- __target__: the name of the target file to be created/updated or removed
-- __content__: the content of the __cr_integration_file__ as a string
-
-### Example:
-Below is an example of the json-ified integration file. 
-{
-  "target": "test_create_parsers_data.py",
-  "content": "\"\"\"\n#--- cr_op: create, cr_type: file, cr_anchor: test_parsers_data.py ---#\n# MANDATORY: package change-request to indicate the operation and the file/module at hand\n# NOTE: The package change-request starts with # 3 dashes like: #---\n\"\"\"\nimport os\nimport time\n\nclass FirstClass:\n\n    def __init__(self, *args, **kwargs):\n        \"\"\"Target for 'insert_after'.\"\"\"\n        pass\n\n    def method_after_init(self, *args, **kwargs):\n        \"\"\"This method should remain after the inserted method.\"\"\"\n        return \"after\"\n\n\nclass SecondClass:\n    \"\"\"Tests 'insert_before' and 'replace' operations.\"\"\"\n\n    def method_before_replace(self, *args, **kwargs):\n        \"\"\"This method should remain before the inserted/replaced method.\"\"\"\n        return \"before\"\n\n    def method_to_replace(self, *args, **kwargs):\n        \"\"\"This method is the target for 'insert_before' and 'replace'.\"\"\"\n        return \"This is the original method.\"\n\n    def method_after_replace(self, *args, **kwargs):\n        \"\"\"This method should remain untouched after all operations.\"\"\"\n        return \"after\"\n\n\nclass ThirdClass:\n    \"\"\"Tests the 'remove' operation.\"\"\"\n\n    def method_before_remove(self, *args, **kwargs):\n        \"\"\"This method should remain after the removal.\"\"\"\n        return \"before\"\n\n    def method_to_remove(self, *args, **kwargs):\n        \"\"\"This method is targeted for removal.\"\"\"\n        print(\"This method will be removed.\")\n\n    def method_after_remove(self, *args, **kwargs):\n        \"\"\"This method should remain after the removal.\"\"\"\n        return \"after\"\n"
-}

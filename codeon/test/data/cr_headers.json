@@ -1,0 +1,4 @@
+{
+  "target": "headers.py",
+  "code": "#--- cr_op: update, cr_type: file, cr_anc: cr_headers.py ---#\n#-- cr_op: replace, cr_type: method, cr_anc: CrHeads.create_marker --#\ndef create_marker(self, *args, cr_id: str | None = None, **kwargs) -> str:\n    \"\"\"Allow emitting a header even when cr_id is unknown/omitted.\"\"\"\n    marker_data = self.to_dict()\n    if cr_id:\n        marker_data['cr_id'] = cr_id\n    parts = [f\"{k}: {v}\" for k, v in marker_data.items()]\n    return f\"{self.start_token}{', '.join(parts)}{self.end_token}\"\n"
+}

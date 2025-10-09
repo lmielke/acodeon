@@ -4,7 +4,7 @@ import unittest
 
 import codeon.settings as sts
 from codeon.apis import create
-from codeon.helpers.file_info import UpdatePaths
+from codeon.helpers.file_info import CrPaths
 import codeon.settings as sts
 
 

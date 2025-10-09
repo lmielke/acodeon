@@ -2,14 +2,15 @@
 
 import libcst as cst
 from typing import List, Tuple, Optional
-from codeon.cr_headers import CrHeads, OP_M, CRTypes
+from colorama import Fore, Style
+from codeon.headers import CrHeads, OP_M, CRTypes
 
 
 class ClassTransformer:
-    def __init__(self, in_node: cst.ClassDef, cr_ops: List, ch_id: str, *args, **kwargs):
+    def __init__(self, in_node: cst.ClassDef, cr_ops: List, cr_id: str, *args, **kwargs):
         self.in_node = in_node
         self.cr_ops = cr_ops
-        self.ch_id = ch_id
+        self.cr_id = cr_id
         self.removals, self.replacements = self._build_cr_maps(*args, **kwargs)
         self.new_body: list[cst.BaseStatement] = []
         self.tgt_nodes: set[str] = set()
@@ -56,7 +57,7 @@ class ClassTransformer:
         self.tgt_nodes.add(node.name.value)
 
     def _emit_marker(self, *args, op: CrHeads, **kwargs):
-        marker_text = op.create_marker(ch_id=self.ch_id)
+        marker_text = op.create_marker(cr_id=self.cr_id)
         if self.new_body and not isinstance(self.new_body[-1], cst.EmptyLine):
             self.new_body.append(cst.EmptyLine())
         self.new_body.append(cst.EmptyLine(comment=cst.Comment(marker_text)))
@@ -71,13 +72,13 @@ class ApplyChangesTransformer(cst.CSTTransformer):
 
     import_nodes = {OP_M.IA, OP_M.IB}
 
-    def __init__(self, source, ops, *args, ch_id=None, **kwargs):
+    def __init__(self, source, ops, *args, cr_id, **kwargs):
         self.source: list = source
         self.ops: List[Tuple[CrHeads, Optional[cst.CSTNode]]] = ops
-        self.ch_id: str = ch_id or "unknown"
+        self.cr_id: str = cr_id
 
     def _create_marker_node(self, op: CrHeads, *args, **kwargs) -> cst.EmptyLine:
-        marker_text = op.create_marker(ch_id=self.ch_id)
+        marker_text = op.create_marker(cr_id=self.cr_id)
         return cst.EmptyLine(comment=cst.Comment(marker_text))
 
     def _apply_op(self, op: CrHeads, node: cst.CSTNode, target_index: int, new_body: list):
@@ -161,37 +162,37 @@ class ApplyChangesTransformer(cst.CSTTransformer):
         ]
         if not cr_ops:
             return out_node
-        return ClassTransformer(in_node, cr_ops, self.ch_id).transform()
+        return ClassTransformer(in_node, cr_ops, self.cr_id).transform()
 
 
-class ApplyCreateTransformer(cst.CSTTransformer):
-    """
-    A transformer specifically for the 'create' operation. It finds the
-    package cr-header and replaces it with a new marker that includes
-    the change ID (ch_id).
-    """
+# class ApplyCreateTransformer(cst.CSTTransformer):
+#     """
+#     A transformer specifically for the 'create' operation. It finds the
+#     package cr-header and replaces it with a new marker that includes
+#     the change ID (cr_id).
+#     """
 
-    def __init__(self, *args, package_op, ch_id: str, **kwargs):
-        self.package_op = package_op
-        self.ch_id = ch_id
-        self.header_found_and_replaced = False
+#     def __init__(self, *args, package_op, cr_id: str, **kwargs):
+#         self.package_op = package_op
+#         self.cr_id = cr_id
+#         self.header_found_and_replaced = False
 
-    def leave_Module(self, original_node: cst.Module, updated_node: cst.Module) -> cst.Module:
-        """Finds and replaces the cr-header comment at the module level."""
-        if self.header_found_and_replaced:
-            return updated_node
+#     def leave_Module(self, original_node: cst.Module, updated_node: cst.Module) -> cst.Module:
+#         """Finds and replaces the cr-header comment at the module level."""
+#         if self.header_found_and_replaced:
+#             return updated_node
 
-        new_header_nodes = []
-        for header_line in updated_node.header:
-            if (
-                header_line.comment
-                and header_line.comment.value.startswith("#--- cr_op:")
-            ):
-                new_marker = self.package_op.create_marker(ch_id=self.ch_id)
-                new_comment = cst.Comment(value=new_marker)
-                new_header_nodes.append(header_line.with_changes(comment=new_comment))
-                self.header_found_and_replaced = True
-            else:
-                new_header_nodes.append(header_line)
+#         new_header_nodes = []
+#         for header_line in updated_node.header:
+#             if (
+#                 header_line.comment
+#                 and header_line.comment.value.startswith("#--- cr_op:")
+#             ):
+#                 new_marker = self.package_op.create_marker(cr_id=self.cr_id)
+#                 new_comment = cst.Comment(value=new_marker)
+#                 new_header_nodes.append(header_line.with_changes(comment=new_comment))
+#                 self.header_found_and_replaced = True
+#             else:
+#                 new_header_nodes.append(header_line)
 
-        return updated_node.with_changes(header=tuple(new_header_nodes))
+#         return updated_node.with_changes(header=tuple(new_header_nodes))

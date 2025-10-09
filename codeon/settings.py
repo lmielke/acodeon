@@ -71,10 +71,22 @@ if not os.path.exists(resources_dir):
 
 # the following directories refer to the temporary package structure and logs
 # the resulting paths depend on the work_path or cwd this package is run inside
+# all process files are stored here
 temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
+# all cr_prompt files are stored here
+cr_prompt_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_prompt_files')
+cr_prompt_file_name = lambda file_name, cr_id: f'cr_{cr_id}_{file_name.split(".")[0]}.md'
+cq_ex_llm_file = os.path.join(resources_dir, 'CQ-EX-LLM.md')
+# all cr_integration_files are staged here
 cr_integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_integration_files')
+cr_integration_archived_name = lambda file_name, cr_id: f'cr_{cr_id}_{file_name.split('.')[0]}.py'
 stage_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'stage_files')
+json_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_json_files')
+json_file_name = lambda file_name, cr_id: f'cr_{cr_id}_{file_name.split('.')[0]}.json'
 restore_package_dir = lambda pg_name: os.path.join(temp_dir(pg_name), pg_name)
+
+json_target, json_content = 'target', 'code'
+exists_status = 'already exists'
 
 user_settings_name = "settings.yml"
 user_settings_path = os.path.join(resources_dir, user_settings_name)

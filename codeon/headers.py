@@ -1,15 +1,14 @@
-# C:\Users\lars\python_venvs\packages\acodeon\codeon\cr_ops.py
+#--- cr_op: create, cr_type: file, cr_anc: headers.py, cr_id: 2025-10-08-16-12-30 ---#
 
 import os, re, yaml
-from enum import Enum
-from typing import Optional
-from dataclasses import dataclass, asdict
 from colorama import Fore, Style
+from dataclasses import asdict, dataclass
+from enum import Enum
 
 
 @dataclass
 class CR_OBJ_FIELDS:
-    CR_OP: str = "cr_op"       # cr operation to perform (i.e. insert_before, insert_after, replace, remove)
+    CR_OP: str = "cr_op"        # cr operation to perform (i.e. insert_before, insert_after, replace, remove)
     CR_TYPE: str = "cr_type"    # type of object to operate on (i.e. import, method, function, class, raw, file)
     CR_ANC: str = "cr_anc"      # anchor text to locate position in the target module
     INSTALL: str = "install"    # whether to install a package (True/False)
@@ -48,7 +47,6 @@ class CrHeads:
         self.field_order = list(CR_OBJ_FIELDS().to_dict().values())
         for field in self.field_order:
             setattr(self, field, None)
-        self.start_token, self.end_token = "#-- ", " --#"
         self._enum_map = {"cr_op": OP_M, "cr_type": CRTypes}
 
     def load_string(self, *args, head: str, **kwargs):
@@ -63,12 +61,12 @@ class CrHeads:
         unrecognized = {}
         for key, value in data.items():
             if hasattr(self, key):
-                setattr(self, key, self.validate_value(key, value))
+                setattr(self, key, self._validate_value(key, value))
             else:
                 unrecognized[key] = value
         return unrecognized
 
-    def validate_value(self, key: str, value):
+    def _validate_value(self, key: str, value: any, *args, **kwargs):
         """Validates a single value against its expected type or enum."""
         if key in self._enum_map:
             try:
@@ -99,11 +97,11 @@ class CrHeads:
                 data[field] = value.value if isinstance(value, Enum) else value
         return data
 
-    def create_marker(self, *args, ch_id: str, **kwargs) -> str:
+    def create_marker(self, *args, cr_id:str, **kwargs) -> str:
         """Creates the formatted output marker string from the instance's state."""
         marker_data = self.to_dict()
-        if ch_id:
-            marker_data['ch_id'] = ch_id
+        if cr_id:
+            marker_data['cr_id'] = cr_id
         parts = [f"{key}: {value}" for key, value in marker_data.items()]
         return f"{self.start_token}{', '.join(parts)}{self.end_token}"
 
@@ -114,11 +112,13 @@ class UnitCrHeads(CrHeads):
     def __init__(self, *args, **kwargs):
         """Initializes by adding the class_name attribute."""
         super().__init__(*args, **kwargs)
-        self.class_name: Optional[str] = None
+        # module-level cr-header tokens include two dashes
+        self.start_token, self.end_token = "#-- ", " --#"
+        self.class_name: str = None
 
-    def __call__(self, *args, head: str, **kwargs):
+    def __call__(self, *args, **kwargs):
         """Parses the header and derives the class name if applicable."""
-        unrecognized = self.load_string(*args, head=head, **kwargs)
+        unrecognized = self.load_string(*args, **kwargs)
         assert not unrecognized, f"Unknown fields: {unrecognized}"
         self.validate_state(*args, **kwargs)
         self.derive_class_name(*args, **kwargs)
@@ -127,7 +127,7 @@ class UnitCrHeads(CrHeads):
         """Extracts class name from target string for method operations."""
         if self.cr_anc and "." in self.cr_anc and self.cr_type == CRTypes.METHOD:
             self.class_name, self.cr_anc = self.cr_anc.split(".", 1)
-            # we add class_name to field_order before ch_id
+            # we add class_name to field_order before cr_id
         elif self.cr_type == CRTypes.CLASS and self.cr_anc:
             self.class_name = self.cr_anc
         else:
@@ -142,12 +142,13 @@ class PackageCrHeads(CrHeads):
     def __init__(self, *args, **kwargs):
         """Initializes with package-specific tokens and enum maps."""
         super().__init__(*args, **kwargs)
+        # package-level cr-header tokens include three dashes
         self.start_token, self.end_token = "#--- ", " ---#"
         self._enum_map = {"cr_op": OP_P, "cr_type": CRTypes}
 
-    def __call__(self, *args, head: str, verbose:int=0, **kwargs):
+    def __call__(self, *args, verbose:int=0, **kwargs):
         """Parses the header and validates the state."""
-        unrecognized = self.load_string(*args, head=head, verbose=verbose, **kwargs)
+        unrecognized = self.load_string(*args, verbose=verbose, **kwargs)
         assert not unrecognized, f"Unknown fields: {unrecognized}"
         self.validate_state(*args, **kwargs)
         if verbose:

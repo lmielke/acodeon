@@ -7,7 +7,7 @@ import codeon.settings as sts
 
 # C:\Users\lars\python\venvs\packages\acodeon\codeon\helpers\file_info.py
 @dataclass
-class UpdatePaths:
+class CrPaths:
     """
     Manages and validates paths for refactoring operations.
     Input paths are overwritten with their resolved, absolute paths upon initialization.
@@ -20,43 +20,41 @@ class UpdatePaths:
     project_dir: str = field(default_factory=os.getcwd)
     pg_name: str = "default_package"
     api: str = "create"
+    cr_id: str | None = None
 
     # --- Derived Paths ---
-    ch_id: str = field(init=False)
     target_path: str = field(init=False)
     temp_dir: str = field(init=False)
     cr_integration_dir: str = field(init=False)
-    is_valid: bool = field(init=False, default=False)
+    files_exist: bool = field(init=False, default=False)
 
 
-    def __post_init__(self, *args, **kwargs):
-        """Generates a ch_id and resolves all necessary paths."""
-        self.ch_id = sts.time_stamp()
-        self.source_path = self._find_source_path(self.source_path)
+    def __post_init__(self, *args, cr_id:str=None, **kwargs):
+        """Generates a cr_id and resolves all necessary paths."""
+        self.cr_id = cr_id if cr_id is not None else sts.time_stamp()
+        self.source_path, self.file_name = CrPaths._find_file_path(
+                                                    self.source_path, *args,
+                                                    project_dir = self.project_dir, **kwargs)
         self._mk_target_dirs()
         self._create_restore_dirs()
         self.target_path = self._derive_target_path()
         self.cr_integration_path = self._find_cr_cr_file(self.cr_integration_path)
-        self.is_valid = self._validate(*args, **kwargs)
+        self.files_exist = self._validate(*args, **kwargs)
 
-    def _find_source_path(self, raw_path: str, *args, max_depth: int = 5, **kwargs) -> str | None:
+    @staticmethod
+    def _find_file_path(raw_path: str, *args, project_dir=project_dir, max_depth: int = 5, **kwargs) -> str | None:
         """Locates the full source path, searching from the project root."""
-        if not raw_path: return None
-        if os.path.isabs(raw_path) and os.path.isfile(raw_path):
-            return raw_path
-
+        if not raw_path: return None, None
         parts = raw_path.replace("/", os.sep).split(os.sep)
         search_filename, search_dirs = parts[-1], parts[:-1]
-
-        for root, dirs, files in os.walk(self.project_dir):
-            if root[len(self.project_dir) :].count(os.sep) > max_depth:
+        for root, dirs, files in os.walk(project_dir):
+            if root[len(project_dir) :].count(os.sep) > max_depth:
                 dirs[:] = []
                 continue
             dirs[:] = [d for d in dirs if not any(ign in d for ign in sts.ignore_dirs)]
             if search_filename in files:
-                if not search_dirs or root.endswith(os.path.join(*search_dirs)):
-                    return os.path.join(root, search_filename)
-        return None
+                return os.path.join(root, search_filename), search_filename
+        return None, ""
 
     def _mk_target_dirs(self, *args, **kwargs) -> None:
         """Creates the log and change-request directories based on package name."""
@@ -104,28 +102,32 @@ class UpdatePaths:
         return expected_path if os.path.isfile(expected_path) else None
 
     @staticmethod
-    def _create_paths(create_path, *args, hard, pg_name, package_dir, **kwargs) -> str | None:
+    def _create_paths(*args, hard, pg_name, package_dir, cr_id, **kwargs) -> str | None:
         """
         Determines the final output path for the modified file.
-        NOTE: create_path not named cr_integration_path to avoid name colision
         """
-        temp_dir = sts.temp_dir(pg_name)
-        target_dir = package_dir if hard else sts.stage_files_dir(pg_name)
-        target_path = os.path.join(target_dir, os.path.basename(create_path))
-        return {
+        # json paths
+        json_dir = sts.json_files_dir(pg_name)
+        source_path, file_name = CrPaths._find_file_path(*args, **kwargs)
+        json_path = os.path.join(json_dir, sts.json_file_name(file_name, cr_id))
+        if hard:
+            target_path = source_path
+        else:
+            target_path = os.path.join(sts.stage_files_dir(pg_name), file_name)
+        return {   'json_dir': json_dir,
+                    'json_path': json_path,
                     'target_path': target_path,
-                    'source_path': create_path,
-                    'cr_integration_path': create_path
-        } 
-
+                    'source_path': source_path,
+                    'cr_integration_path': os.path.join(sts.cr_integration_dir(pg_name), file_name)
+        }
 
     def _validate(self, *args, **kwargs) -> bool:
         """Validates that source and cr_integration_files exist for the 'update' phase."""
         if not self.source_path and not self.api == 'create':
-            print(f"{Fore.RED}Error:{Style.RESET_ALL} Source file not found.")
+            print(f"{Fore.YELLOW}No, source_file not found in {self.source_path = }.{Style.RESET_ALL} ")
             return False
         if not self.cr_integration_path:
             path_hint = os.path.join(self.cr_integration_dir, os.path.basename(self.source_path or ""))
-            print(f"Op-code file not found. Expected at: {path_hint}")
+            print(f"{Fore.YELLOW}Op-code file not found.{Fore.RESET} Expected at: {path_hint}")
             return False
         return True

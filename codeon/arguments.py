@@ -21,6 +21,12 @@ def mk_args():
     # --- API-specific arguments ---
     # For 'update' API
     parser.add_argument(
+        "-cr",
+        "--cr_id",
+        type=str,
+        help="Id of change request to process. (i.e. 2025-10-09-12-32-22)",
+    )
+    parser.add_argument(
         "-s",
         "--source_path",
         type=str,
@@ -72,6 +78,12 @@ def mk_args():
         help="List of infos to retrieve (used with 'info').",
     )
 
+    parser.add_argument(
+        "-pi",
+        "--prompt_info",
+        action="store_true",
+        help="Runs info as part of a prompt generation",
+    )
     # --- General arguments ---
     parser.add_argument(
         "-v",

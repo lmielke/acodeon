@@ -1,13 +1,15 @@
 # C:\Users\lars\python_venvs\packages\acodeon\codeon\updater.py
 import os
-from dataclasses import asdict
 from colorama import Fore, Style
 
 import codeon.contracts as contracts
 from codeon.helpers.collections import temp_chdir
-from codeon.helpers.file_info import UpdatePaths
-from codeon.creator import JsonEngine, CreateEngine
-from codeon.engine import RefactorEngine
+from codeon.helpers.file_info import CrPaths
+from codeon.parsers import CSTSource, CSTDelta
+from codeon.headers import OP_P
+from codeon.creator import JsonEngine
+from codeon.transformer import ApplyChangesTransformer
+import codeon.settings as sts
 
 
 class Updater:
@@ -15,59 +17,61 @@ class Updater:
 
     def __init__(self, *args, api: str, **kwargs):
         self.api = api
+        self.csts = CSTSource(*args, **kwargs)
+        self.cstd = CSTDelta(*args, **kwargs)
+        self.status_dict = {}
+        self.F = Validator_Formatter()
 
-    def run(self, *args, **kwargs) -> dict | None:
+    def __call__(self, *args, json_string:str=None, **kwargs) -> dict | None:
         """Main execution flow for both 'create' and 'update' APIs."""
-        kwargs = contracts.checks(*args, **kwargs)
-        work_dir = kwargs["work_dir"]
-        path_fields = UpdatePaths.__dataclass_fields__.keys()
-        paths = UpdatePaths(**{k: v for k, v in kwargs.items() if k in path_fields})
-
-        if not paths.is_valid and self.api == "update":
+        kwargs = contracts.update_params(*args, **kwargs)
+        if kwargs.get('work_dir') is None:
             return None
+        if json_string is None and kwargs.get('files_exist') == False:
+            return None
+        if json_string is not None:
+            kwargs = self.create_from_json_source(*args, json_string=json_string, **kwargs)
+            # a json_string might have already been processed
+            if kwargs.get('status') == sts.exists_status:
+                return None
+        self.status_dict = self.process_cr(*args, **kwargs)
+        if self.status_dict is None:
+            return None
+        self._archive_cr_file(*args, **kwargs)
+        self._log_result(*args, status=bool(self.status_dict), **kwargs)
+        return self
 
-        status_dict = None
+    def create_from_json_source(self, *args, json_string:str, **kwargs):
+        je = JsonEngine(*args, json_string=json_string, **kwargs)(*args, **kwargs)
+        if je.staged_path == sts.exists_status:
+            return {'status': je.staged_path}
+        elif je.data:
+            kwargs.update(CrPaths._create_paths(je.staged_path, **kwargs))
+        return kwargs
+
+    def process_cr(self, *args, work_dir, cr_integration_path, source_path, **kwargs):
         with temp_chdir(work_dir):
-            kwargs.update(asdict(paths))
-            if self.api == "create":
-                staged_path = self._stage_from_json(*args, **kwargs)
-                if not staged_path:
-                    return None
-                path_updates = UpdatePaths._create_paths(staged_path, **kwargs)
-                kwargs.update(path_updates)
-                status_dict = CreateEngine(*args, **kwargs).run(*args, **kwargs)
-            else:  # 'update' api
-                status_dict = RefactorEngine(*args, **kwargs).run(*args, **kwargs)
+            self.csts(*args, source_path=source_path,  **kwargs)
+            self.cstd(*args, source_path=cr_integration_path, **kwargs)
+            package_op, cr_ops = self.cstd.body
+            tf = ApplyChangesTransformer(self.csts.body, cr_ops, *args, package_op=package_op, **kwargs)
+            out_code = self.F(self.csts.body.visit(tf).code, *args, **kwargs)
+            self._write_output(out_code, *args, **kwargs)
+        return {
+                        'cr_id': kwargs.get('cr_id'),
+                        'cr_ops': [op.to_dict() for op, node in cr_ops],
+                        'source_path': source_path,
+                        'cr_integration_path': cr_integration_path,
+                        'package_op': str(package_op.cr_op),
+        }
 
-        if status_dict:
-            self._archive_cr_cr_file(*args, **kwargs)
-        self._log_result(*args, status=bool(status_dict), **kwargs)
-        return status_dict
-
-    def _stage_from_json(self, *args, cr_integration_dir: str, verbose:int=0, **kwargs) -> str | None:
-        """Parses a JSON string and writes the content to a temporary cr_integration_file."""
-        data = JsonEngine().parse(*args, **kwargs)
-        if not data:
-            print(f"{Fore.RED}Failed to parse JSON string.{Style.RESET_ALL}")
-            return None
-        try:
-            target_path = os.path.join(cr_integration_dir, data["target"])
-            with open(target_path, "w", encoding="utf-8") as f:
-                f.write(data["code"])
-            if verbose:
-                print(f"{Fore.GREEN}Staged cr_integration_file: {target_path}{Style.RESET_ALL}")
-            return target_path
-        except (KeyError, IOError) as e:
-            print(f"{Fore.RED}Failed to stage cr_integration_file: {e}{Style.RESET_ALL}")
-            return None
-
-    def _archive_cr_cr_file(self, *args, cr_integration_path: str, ch_id: str, **kwargs):
-        """Renames the cr_integration_file by prepending 'cr_[ch_id]_'."""
+    def _archive_cr_file(self, *args, cr_integration_path: str, cr_id: str, **kwargs):
+        """Renames the cr_integration_file by prepending 'cr_[cr_id]_'."""
         if not all([cr_integration_path, os.path.exists(cr_integration_path)]):
             return
         dir, fname = os.path.split(cr_integration_path)
         if not fname.startswith("cr_"):
-            os.rename(cr_integration_path, os.path.join(dir, f"cr_{ch_id}_{fname}"))
+            os.rename(cr_integration_path, os.path.join(dir, f"cr_{cr_id}_{fname}"))
 
     def _log_result(self, *args, status: bool, hard: bool, **kwargs):
         """Prints the final result to the console."""
@@ -81,3 +85,47 @@ class Updater:
                 print(f"  Overwritten: {source}")
             else:
                 print(f"  Original:    {source}\n  Modified:    {target}")
+    @staticmethod
+    def _write_output(code: str, *args, target_path: str, **kwargs) -> bool:
+        """Writes the final transformed code to the target file path."""
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write(code)
+
+
+class Validator_Formatter:
+    """
+    Keeps output code and, if requested, formats via Black.
+    WHY: Wire CLI flag reliably; avoid surprises if Black is absent.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.out_code: str = ""
+
+    def __call__(self, code: str, *args, use_black: bool = False, **kwargs) -> str:
+        self.out_code = code
+        if use_black:
+            self._format_with_black(*args, **kwargs)
+        return self.out_code
+
+    def _format_with_black(self, *args, verbose: int = 0, **kwargs) -> None:
+        import shutil, subprocess
+        if not shutil.which("black"):
+            if verbose >= 1:
+                print("WARNING: --black set, but 'black' not found in PATH.")
+            return
+        try:
+            p = subprocess.run(
+                ["black", "-q", "-"],
+                input=self.out_code,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            if p.returncode == 0 and p.stdout:
+                self.out_code = p.stdout
+            elif verbose >= 1:
+                print("WARNING: black returned non-zero; keeping unformatted code.")
+        except Exception as e:
+            if verbose >= 1:
+                print(f"Error running black: {e}")

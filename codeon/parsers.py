@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple
 import libcst as cst
 from colorama import Fore, Style
 
-from codeon.cr_headers import UnitCrHeads, PackageCrHeads, OP_M, CRTypes
+from codeon.headers import UnitCrHeads, PackageCrHeads, OP_M, CRTypes
 
 
 class CSTParserBase(ABC):
@@ -44,28 +44,31 @@ class CSTDelta(CSTParserBase):
     and a list of executable module-level operations.
     """
 
-    module_cr_finder = re.compile(r"(#-- cr_op:.*?--#)(.*?)(?=#--|$)", re.DOTALL)
     package_cr_finder = re.compile(r"^(#--- cr_op:.*?---#)", re.MULTILINE)
+    unit_cr_finder = re.compile(r"(#-- cr_op:.*?--#)(.*?)(?=#--|$)", re.DOTALL)
 
     def parse(self, *args, **kwargs) -> tuple:
         """Parses both package and unit cr-headers from the source text."""
-        self.V.validate_package_cr_header(self.source_text, *args, **kwargs)
         package_op = self._extract_package_op(*args, **kwargs)
         module_ops = self._extract_module_ops(*args, **kwargs)
         return package_op, module_ops
 
     def _extract_package_op(self, *args, **kwargs) -> Optional[PackageCrHeads]:
-        """Finds and parses a single package cr-header, if present."""
-        if match := self.package_cr_finder.search(self.source_text):
-            op = PackageCrHeads()
-            op(head=match.group(1).strip())
-            return op
-        return None
+        """
+        Finds and parses a single package cr-header, if present.
+        NOTE: We are matching with re.findall but only using the first match.
+        """
+        matches = self.package_cr_finder.findall(self.source_text)
+        assert len(matches) == 1, "Expected exactly one package cr_op header in line 0."
+        # we now know there is exactly one match, we select this first match
+        op = PackageCrHeads()
+        op(head=matches[0].strip())
+        return op    
 
     def _extract_module_ops(self, *args, **kwargs ) -> List:
         """Extracts all module-level operations from the source text."""
         ops = []
-        for head, body in self.module_cr_finder.findall(self.source_text):
+        for head, body in self.unit_cr_finder.findall(self.source_text):
             body_node = self._parse_body(body)
             op = UnitCrHeads()
             op(head=head.strip())
@@ -83,7 +86,7 @@ class CSTDelta(CSTParserBase):
 
 class Validations:
 
-    def _validate_op(self, op: UnitCrHeads, head: str, node: Optional[cst.CSTNode], *args, **kwargs) -> UnitCrHeads:
+    def _validate_op(self, op:UnitCrHeads, head:str, node:cst.CSTNode, *args, **kwargs) -> UnitCrHeads:
         """Tries to create and validate an UnitCrHeads object. Halts on failure."""
         try:
             req_targets = {OP_M.IB, OP_M.IA, OP_M.RP, OP_M.RM}
@@ -97,36 +100,19 @@ class Validations:
                 raise ValueError("Op 'remove' must not have a code block.")
             return op
         except (ValueError, AttributeError) as e:
-            print(f"{Fore.RED}FATAL ERROR in cr_integration_file:{Style.RESET_ALL}\n  {e}")
-            print(f"  Header: '{head}'")
-            print("Halting execution.")
+            print(
+                f"{Fore.RED}FATAL ERROR in cr_integration_file:{Style.RESET_ALL}\n"
+                f"Invalid cr_op header or body: '{head}'\n"
+                f"{e}\n"
+                f"Halting execution."
+                )
             exit(1)
 
     def _validate_ops(self, ops: list, *args, api, verbose: int = 0, **kwargs):
         if not ops and api != 'create':
-            print(f"{Fore.RED}parsers.Validations._validate_ops Error: "
-                        f"No valid operations found in ops_file!{Fore.RESET}")
+            print(  f"{Fore.RED}parsers.Validations._validate_ops Error: "
+                    f"No valid operations found in ops_file!{Fore.RESET}")
             return []
         if verbose:
-            print(
-                f"{Fore.GREEN}Parsed {len(ops)} ops from ops_file.{Style.RESET_ALL}"
-            )
+            print(f"{Fore.GREEN}Parsed {len(ops)} ops from ops_file.{Style.RESET_ALL}" )
         return ops
-
-    def validate_package_cr_header(self, source_text: str, *args, **kwargs) -> None:
-        """Checks if the first non-empty line is a package cr_head."""
-        stripped_source = source_text.strip()
-        if not stripped_source:
-            print(f"{Fore.RED}FATAL ERROR: cr_integration_file is empty.{Style.RESET_ALL}")
-            exit(1)
-
-        package_token = PackageCrHeads().start_token
-        if not stripped_source.startswith(package_token):
-            first_line = source_text.splitlines()[0].strip()
-            print(
-                f"{Fore.RED}FATAL ERROR: The first line of the cr_integration_file "
-                f"must be a package cr_head.{Style.RESET_ALL}"
-            )
-            print(f"  Expected start: '{package_token}'")
-            print(f"  Actual line:    '{first_line}'")
-            exit(1)

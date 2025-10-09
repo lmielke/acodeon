@@ -3,15 +3,16 @@ from colorama import Fore, Style
 from codeon.updater import Updater
 
 
-def main(*args, **kwargs):
+def main(*args, api='update', **kwargs):
     """
     Continuously runs the update process, collecting a status dict for each run.
     """
     update_results = []
-    updater = Updater(*args, **kwargs)
-
-    while status_dict := updater.run(*args, **kwargs):
-        update_results.append(status_dict)
+    updater = Updater(*args, api=api, **kwargs)
+    # loop unitl all updates are processed
+    while r := updater(*args, api=api, **kwargs):
+        update_results.append(r.status_dict)
+        print(f"{Fore.CYAN}Update processed: {r.status_dict}{Style.RESET_ALL}")
 
     if update_results:
         print(

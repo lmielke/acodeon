@@ -1,9 +1,12 @@
 # contracts.py
-import codeon.settings as sts
 import os, sys
-import codeon.arguments as arguments
-from codeon.helpers.dir_context import DirContext
 from colorama import Fore, Style
+from dataclasses import asdict
+
+import codeon.arguments as arguments
+from codeon.helpers.file_info import CrPaths
+from codeon.helpers.dir_context import DirContext
+import codeon.settings as sts
 
 
 def checks(*args, **kwargs):
@@ -82,3 +85,11 @@ def normalize_path(path: str, *args, **kwargs) -> str:
         if os.path.exists(os.path.abspath(os.path.join(os.getcwd(), p))):
             p = os.path.abspath(os.path.join(os.getcwd(), p))
     return os.path.normpath(p)
+
+def update_params(*args, **kwargs) -> dict:
+    """Updates parameters for the run method."""
+    kwargs = checks(*args, **kwargs)
+    fields = {k: v for k, v in kwargs.items() if k in CrPaths.__dataclass_fields__.keys()}
+    print(f"{fields = }")
+    kwargs.update(asdict(CrPaths(**fields)))
+    return kwargs
