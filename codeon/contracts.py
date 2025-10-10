@@ -90,6 +90,5 @@ def update_params(*args, **kwargs) -> dict:
     """Updates parameters for the run method."""
     kwargs = checks(*args, **kwargs)
     fields = {k: v for k, v in kwargs.items() if k in CrPaths.__dataclass_fields__.keys()}
-    print(f"{fields = }")
     kwargs.update(asdict(CrPaths(**fields)))
     return kwargs

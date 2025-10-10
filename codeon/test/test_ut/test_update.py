@@ -49,8 +49,15 @@ class Test__update(unittest.TestCase):
 
     def test__update_success_path(self, *args, **kwargs):
         """Tests the 'happy path' where the transformation is successful."""
-        # out = codeon.apis.update.main(json_string=self.json_string_content, black=True, api='update')
-        out = codeon.apis.update.main(source_path=self.test_target_name, black=True, api='update')
+
+        out = codeon.apis.update.main(
+                                        json_string=self.json_string_content, 
+                                        # source_path=self.test_target_name, 
+                                            black=True, 
+                                            api='update',
+                                            hard=False, 
+                                        )
+
         print(f"{out = }")
 
     def test_update_halts_on_invalid_cr_op(self):

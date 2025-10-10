@@ -35,8 +35,8 @@ class CrPaths:
         self.source_path, self.file_name = CrPaths._find_file_path(
                                                     self.source_path, *args,
                                                     project_dir = self.project_dir, **kwargs)
+        self._create_restore_dirs(*args, **kwargs)
         self._mk_target_dirs()
-        self._create_restore_dirs()
         self.target_path = self._derive_target_path()
         self.cr_integration_path = self._find_cr_cr_file(self.cr_integration_path)
         self.files_exist = self._validate(*args, **kwargs)
@@ -69,8 +69,7 @@ class CrPaths:
         NOTE: first resolution action would be a 'git reset --hard'
         This will contain all package coding in case of a git reset not working.
         """
-        if not os.path.exists(sts.restore_package_dir(self.pg_name)):
-            shutil.copytree(self.project_dir, sts.restore_package_dir(self.pg_name))
+        os.makedirs(sts.restore_files_dir(self.pg_name), exist_ok=True)
 
     @staticmethod
     def _hard_restore_dirs(self, *args, **kwargs) -> None:
@@ -84,7 +83,7 @@ class CrPaths:
                         f"(y/n): {Style.RESET_ALL}")
         if confim.lower() == 'y':
             shutil.rmtree(self.project_dir)
-        shutil.copytree(sts.restore_package_dir(self.pg_name), self.project_dir)
+        shutil.copytree(sts.restore_files_dir(self.pg_name), self.project_dir)
         
     def _derive_target_path(self, *args, **kwargs) -> str | None:
         """Determines the final output path for the modified file."""
@@ -123,11 +122,9 @@ class CrPaths:
 
     def _validate(self, *args, **kwargs) -> bool:
         """Validates that source and cr_integration_files exist for the 'update' phase."""
-        if not self.source_path and not self.api == 'create':
-            print(f"{Fore.YELLOW}No, source_file not found in {self.source_path = }.{Style.RESET_ALL} ")
-            return False
         if not self.cr_integration_path:
             path_hint = os.path.join(self.cr_integration_dir, os.path.basename(self.source_path or ""))
-            print(f"{Fore.YELLOW}Op-code file not found.{Fore.RESET} Expected at: {path_hint}")
+            print(  f"{Fore.YELLOW}CR integration file not found.{Fore.RESET} "
+                    f"Expected at: {path_hint.replace(os.path.expanduser('~'), '~')}")
             return False
         return True

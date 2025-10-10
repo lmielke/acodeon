@@ -65,6 +65,8 @@ ignore_files = {
     },
 }
 
+table_max_chars = 100
+
 resources_dir = os.path.expanduser(f'~{os.sep}.{package_name}')
 if not os.path.exists(resources_dir):
     os.makedirs(resources_dir)
@@ -83,7 +85,7 @@ cr_integration_archived_name = lambda file_name, cr_id: f'cr_{cr_id}_{file_name.
 stage_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'stage_files')
 json_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_json_files')
 json_file_name = lambda file_name, cr_id: f'cr_{cr_id}_{file_name.split('.')[0]}.json'
-restore_package_dir = lambda pg_name: os.path.join(temp_dir(pg_name), pg_name)
+restore_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'{pg_name}_archive')
 
 json_target, json_content = 'target', 'code'
 exists_status = 'already exists'

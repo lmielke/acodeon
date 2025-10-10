@@ -31,7 +31,7 @@ class JsonEngine:
         if not self.data:
             return self
         # we also save the json to json_path for reference
-        self.json_path = self.backup_json(*args, **kwargs)
+        self.json_path = self.write_json(*args, **kwargs)
         # if data is found we save it to cr_integration_dir
         self.staged_path = self.stage_from_json(*args, **kwargs)
         return self
@@ -79,25 +79,24 @@ class JsonEngine:
 
     def stage_from_json(self, *args, verbose: int = 0, **kwargs ) -> str | None:
         try:
-                        
             cr_integration_file = self.test_path('staging', *args, **kwargs)
-            if cr_integration_file == sts.exists_status:
-                return sts.exists_status
+            if cr_integration_file.endswith(sts.exists_status):
+                return cr_integration_file
+            print(f"{Fore.GREEN}JsonEngine writing:{Fore.RESET} {cr_integration_file.replace(os.path.expanduser('~'), '~')}")
             with open(cr_integration_file, "w", encoding="utf-8") as f:
                 f.write(self.data[sts.json_content])
-            if verbose:
-                print(f"{Fore.GREEN}Staged: {Style.RESET_ALL}{cr_integration_file = }")
             return cr_integration_file
         except (KeyError, IOError) as e:
             print(f"{Fore.RED}Failed to stage cr_integration_file: "
                   f"{e}{Style.RESET_ALL}")
             return None
 
-    def backup_json(self, *args, **kwargs):
+    def write_json(self, *args, **kwargs):
         # we save the json into json_path
         json_path = self.test_path('json', *args, **kwargs)
-        if json_path == sts.exists_status:
-            return sts.exists_status
+        if json_path.endswith(sts.exists_status):
+            return json_path
+        print(f"{Fore.GREEN}JsonEngine writing:{Fore.RESET} {json_path.replace(os.path.expanduser('~'), '~')}")
         with open(json_path, "w", encoding="utf-8") as f_json:
             f_json.write(self.json_string)
         return json_path
@@ -111,7 +110,8 @@ class JsonEngine:
                                         sts.json_file_name(self.data[sts.json_target], cr_id)
                                         )
             if os.path.exists(out_path):
-                return sts.exists_status
+                print(f"{Fore.YELLOW}creator.test_path:{Fore.RESET} {out_path.replace(os.path.expanduser('~'), '~')} already exists!")
+                return f"json file {sts.exists_status}"
         elif phase == 'staging':
             files_dir = sts.cr_integration_dir(pg_name)
             out_path = os.path.join(
@@ -119,10 +119,12 @@ class JsonEngine:
                         sts.cr_integration_archived_name(self.data[sts.json_target], cr_id)
                                 )
             if os.path.exists(out_path):
-                return sts.exists_status
+                print(f"{Fore.YELLOW}creator.test_path:{Fore.RESET} {out_path.replace(os.path.expanduser('~'), '~')} already exists!")
+                return f"staging file {sts.exists_status}"
             else:
                 out_path = os.path.join(files_dir, self.data[sts.json_target])
                 if os.path.exists(out_path):
-                    return sts.exists_status
+                    print(f"{Fore.YELLOW}creator.test_path{Fore.RESET}: {out_path.replace(os.path.expanduser('~'), '~')} already exists!")
+                    return f"json file {sts.exists_status}"
         os.makedirs(files_dir, exist_ok=True)
         return out_path

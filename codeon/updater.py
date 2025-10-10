@@ -1,5 +1,5 @@
 # C:\Users\lars\python_venvs\packages\acodeon\codeon\updater.py
-import os
+import os, shutil
 from colorama import Fore, Style
 
 import codeon.contracts as contracts
@@ -32,7 +32,8 @@ class Updater:
         if json_string is not None:
             kwargs = self.create_from_json_source(*args, json_string=json_string, **kwargs)
             # a json_string might have already been processed
-            if kwargs.get('status') == sts.exists_status:
+            if kwargs.get('status', '').endswith(sts.exists_status):
+                print(f"{Fore.RED}ERROR: {kwargs.get('status')}, returning now{Fore.RESET}")
                 return None
         self.status_dict = self.process_cr(*args, **kwargs)
         if self.status_dict is None:
@@ -43,7 +44,7 @@ class Updater:
 
     def create_from_json_source(self, *args, json_string:str, **kwargs):
         je = JsonEngine(*args, json_string=json_string, **kwargs)(*args, **kwargs)
-        if je.staged_path == sts.exists_status:
+        if je.staged_path.endswith(sts.exists_status):
             return {'status': je.staged_path}
         elif je.data:
             kwargs.update(CrPaths._create_paths(je.staged_path, **kwargs))
@@ -85,9 +86,20 @@ class Updater:
                 print(f"  Overwritten: {source}")
             else:
                 print(f"  Original:    {source}\n  Modified:    {target}")
+    
     @staticmethod
-    def _write_output(code: str, *args, target_path: str, **kwargs) -> bool:
+    def _write_output(code: str, *args, target_path: str, pg_name:str, hard:bool, **kwargs) -> bool:
         """Writes the final transformed code to the target file path."""
+        # if source_file is overwritten we first backup the existing file for potential restore
+        if hard:
+            restore_path = os.path.join(
+                                            sts.restore_files_dir(pg_name), 
+                                            os.path.basename(target_path)
+                                            )
+            print(f"{Fore.GREEN}Updater._write_restore:{Fore.RESET} {restore_path = }")
+            shutil.copyfile(target_path, restore_path)
+        # then we write the new code
+        print(f"{Fore.GREEN}Updater._write_staging:{Fore.RESET} {target_path = }")
         with open(target_path, "w", encoding="utf-8") as f:
             f.write(code)
 

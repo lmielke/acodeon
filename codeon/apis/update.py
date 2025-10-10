@@ -1,6 +1,7 @@
 # C:\Users\lars\python_venvs\packages\acodeon\codeon\apis\update.py
 from colorama import Fore, Style
 from codeon.updater import Updater
+from codeon.helpers.collections import dict_to_table_v
 
 
 def main(*args, api='update', **kwargs):
@@ -10,9 +11,11 @@ def main(*args, api='update', **kwargs):
     update_results = []
     updater = Updater(*args, api=api, **kwargs)
     # loop unitl all updates are processed
+    cnt = 0
     while r := updater(*args, api=api, **kwargs):
+        print(f"{dict_to_table_v('DONE API UPDATE.MAIN', r.status_dict)}")
         update_results.append(r.status_dict)
-        print(f"{Fore.CYAN}Update processed: {r.status_dict}{Style.RESET_ALL}")
+        cnt += 1
 
     if update_results:
         print(

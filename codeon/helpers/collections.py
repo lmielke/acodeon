@@ -1,8 +1,11 @@
 # collections.py
 import json, os, pyttsx3, re, shutil, subprocess, sys, textwrap, time, yaml
+from colorama import Fore, Style
 from contextlib import contextmanager
 from tabulate import tabulate as tb
 from datetime import datetime as dt
+from textwrap import wrap as tw
+
 import shutil
 import subprocess
 
@@ -17,6 +20,77 @@ def _speak_message(message: str, *args, **kwargs):
     except Exception as e:
         logging.error(f"Text-to-speech failed: {e}")
 
+
+def colored_table_underline(tbl, *args, up_to:int=0, color=Fore.CYAN, **kwargs):
+    print('\n')
+    for i, line in enumerate(tbl.split('\n')):
+        if i <= up_to:
+            print(f"{color}{line}{Fore.RESET}")
+        else:
+            print(line)
+    print('\n')
+
+def normalize_max_chars(max_chars:int, text, *args, **kwargs):
+    """
+    some strings contain very short texts
+    those texts can use a shorter max_chars than longer texts
+    so we re-compute max_chars to result in a minimum of 3 lines
+    """
+    if len(text) <= 50:
+        return max_chars // 5
+    elif len(text) <= 128:
+        return max_chars // 4
+    elif len(text) <= 400:
+        return max_chars // 3
+    elif len(text) <= 1200:
+        return max_chars // 2
+    else:
+        return int(max_chars * 2)
+
+def wrap_text(text:str, *args, max_chars:int=sts.table_max_chars, **kwargs):
+    max_chars = normalize_max_chars(max_chars, text, *args, **kwargs)
+    if type(text) == str and len(text) > max_chars:
+        wrapped = ''
+        for line in text.split('\n'):
+            if len(line) > max_chars:
+                line = '\n'.join(tw(line, max_chars))
+            wrapped += f"\n{line}"               
+        return wrapped.strip()
+    return text
+
+def dict_to_table_v(name:str, d: dict, *args, **kwargs):
+    """
+    Prints the dictionary with keys as column headers and values as rows.
+    Wraps long text using wrap_text function.
+    """
+    print(f"\n{Fore.CYAN}{name}:{Fore.RESET}", end='')
+    headers = list(d.keys())  # Extract keys for column headers
+    row = []  # The row of values
+    for key, value in d.items():
+        if isinstance(value, str):
+            row.append(wrap_text(value, *args, **kwargs))
+        elif isinstance(value, dict):
+            # If the value is another dictionary, format it for display
+            row.append(
+                wrap_text(
+                    '\n'.join([f"{Fore.CYAN}{k}{Fore.RESET}: {str(v)}" for k, v in value.items()]),
+                    **kwargs,
+                )
+            )
+        elif isinstance(value, list):
+            # If the value is a list, join the list into a string
+            row.append(
+                wrap_text(
+                    '\n'.join([str(v) for v in value]),
+                    **kwargs,
+                )
+            )
+        else:
+            # Handle any other data types (e.g., numbers, bools)
+            row.append(str(value))
+    # Use tabulate to create the table
+    tbl = tb([row], headers=headers, tablefmt='simple')
+    colored_table_underline(tbl, *args, **kwargs)
 
 def unalias_path(work_path: str) -> str:
     """
