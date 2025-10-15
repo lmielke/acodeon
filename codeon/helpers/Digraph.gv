@@ -1,8 +1,0 @@
-// Package Dependency Graph
-digraph {
-	node [fillcolor=white style=filled]
-	edge [fontsize=10]
-	nodesep=0.8 rankdir=TB ranksep=0.5
-	"file_info.py" [fillcolor="#00ffff" fontsize=12 style=filled]
-	"file_info.py" [fillcolor=lightblue fontsize=12]
-}

@@ -21,7 +21,7 @@ class DirContext:
     pg_name: str | None = None
     # file facet
     file_path: str | None = None
-    file_name: str | None = None
+    work_file_name: str | None = None
     file_dir: str | None = None
     is_test_file: bool = False
     import_path: str | None = None
@@ -45,7 +45,7 @@ class DirContext:
         project_dir = cls._find_root(work_dir, cls.project_key)
         package_dir = cls._find_package_dir(project_dir or work_dir, cls.package_key)
         is_package = package_dir is not None
-        file_path, file_name, file_dir = cls._file_facet(abs_path)
+        file_path, work_file_name, file_dir = cls._file_facet(abs_path)
         class_name, method_name = cls._ast_symbols(file_path, cursor_pos)
 
         return cls(
@@ -56,9 +56,9 @@ class DirContext:
             pr_name=(os.path.basename(project_dir) if is_package and project_dir else None),
             pg_name=(os.path.basename(package_dir) if is_package and package_dir else None),
             file_path=file_path,
-            file_name=file_name,
+            work_file_name=work_file_name,
             file_dir=file_dir,
-            is_test_file=bool(file_name and file_name.startswith("test")),
+            is_test_file=bool(work_file_name and work_file_name.startswith("test")),
             import_path=cls._import_path(file_path, project_dir),
             test_cmd=cls._test_cmd(file_path, project_dir),
             class_name=class_name,
@@ -100,7 +100,7 @@ class DirContext:
             "work_dir": self.work_dir, "project_dir": self.project_dir,
             "package_dir": self.package_dir, "is_package": self.is_package,
             "pr_name": self.pr_name, "pg_name": self.pg_name,
-            "file_path": self.file_path, "file_name": self.file_name,
+            "file_path": self.file_path, "work_file_name": self.work_file_name,
             "file_dir": self.file_dir, "is_test_file": self.is_test_file,
             "import_path": self.import_path, "test_cmd": self.test_cmd,
             "class_name": self.class_name, "method_name": self.method_name,

@@ -16,6 +16,7 @@ class CrPaths:
     # --- Inputs (will be overwritten with resolved paths) ---
     source_path: str | None = None
     cr_integration_path: str | None = None
+    work_file_name: str | None = None
     hard: bool = False
     project_dir: str = field(default_factory=os.getcwd)
     pg_name: str = "default_package"
@@ -32,7 +33,7 @@ class CrPaths:
     def __post_init__(self, *args, cr_id:str=None, **kwargs):
         """Generates a cr_id and resolves all necessary paths."""
         self.cr_id = cr_id if cr_id is not None else sts.time_stamp()
-        self.source_path, self.file_name = CrPaths._find_file_path(
+        self.source_path, self.work_file_name = CrPaths._find_file_path(
                                                     self.source_path, *args,
                                                     project_dir = self.project_dir, **kwargs)
         self._create_restore_dirs(*args, **kwargs)
@@ -87,6 +88,7 @@ class CrPaths:
         
     def _derive_target_path(self, *args, **kwargs) -> str | None:
         """Determines the final output path for the modified file."""
+        print(  f"  {Fore.CYAN}Source Path: {self.source_path = }{Fore.RESET}")
         if not self.source_path: return None
         if self.hard: return self.source_path
         return os.path.join(sts.stage_files_dir(self.pg_name), os.path.basename(self.source_path))
@@ -107,17 +109,17 @@ class CrPaths:
         """
         # json paths
         json_dir = sts.json_files_dir(pg_name)
-        source_path, file_name = CrPaths._find_file_path(*args, **kwargs)
-        json_path = os.path.join(json_dir, sts.json_file_name(file_name, cr_id))
+        source_path, work_file_name = CrPaths._find_file_path(*args, **kwargs)
+        json_path = os.path.join(json_dir, sts.json_file_name(work_file_name, cr_id))
         if hard:
             target_path = source_path
         else:
-            target_path = os.path.join(sts.stage_files_dir(pg_name), file_name)
+            target_path = os.path.join(sts.stage_files_dir(pg_name), work_file_name)
         return {   'json_dir': json_dir,
                     'json_path': json_path,
                     'target_path': target_path,
                     'source_path': source_path,
-                    'cr_integration_path': os.path.join(sts.cr_integration_dir(pg_name), file_name)
+                    'cr_integration_path': os.path.join(sts.cr_integration_dir(pg_name), work_file_name)
         }
 
     def _validate(self, *args, **kwargs) -> bool:

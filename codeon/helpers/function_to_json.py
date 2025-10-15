@@ -176,10 +176,10 @@ class JoSchema:
 
 class FunctionToJson:
 
-    def __init__(self, *dec_args, schemas: set = set(), file_name: str = None,
+    def __init__(self, *dec_args, schemas: set = set(), work_file_name: str = None,
                  write: bool = True, verbose: int = 0, **kwargs):
         self.schemas = schemas
-        self.file_name = file_name
+        self.work_file_name = work_file_name
         self.asts = {}
 
     def __call__(self, test_meth: Callable) -> Callable:
@@ -247,10 +247,10 @@ class FunctionToJson:
                 return f"<{obj.__name__}>"
             return str(obj)
         if write:
-            file_name = f"{dot_import}.{m_name}" if self.file_name is None else self.file_name
-            if not file_name.endswith(".json"):
-                file_name += ".json"
-            with open(os.path.join(sts.apis_json_dir, file_name), "w") as f:
+            work_file_name = f"{dot_import}.{m_name}" if self.work_file_name is None else self.work_file_name
+            if not work_file_name.endswith(".json"):
+                work_file_name += ".json"
+            with open(os.path.join(sts.apis_json_dir, work_file_name), "w") as f:
                 f.write(json.dumps(self.asts, indent=4, default=default_serializer))
 
     @staticmethod

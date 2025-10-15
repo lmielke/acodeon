@@ -27,16 +27,30 @@ def mk_args():
         help="Id of change request to process. (i.e. 2025-10-09-12-32-22)",
     )
     parser.add_argument(
+        "-p",
+        "--cr_prompt",
+        type=str,
+        help="Prompt describing the change request (used with 'create', 'update')."
+    )
+    parser.add_argument(
         "-s",
         "--source_path",
         type=str,
-        help="path to the source file to update.",
+        help="path to or work_file_name of the source file subject to the CR.",
     )
     parser.add_argument(
         "-c",
         "--cr_integration_path",
         type=str,
         help="path to the update/cr_integration_file.",
+    )
+    parser.add_argument(
+        "-f",
+        "--integration_format",
+        type=str,
+        default="md",
+        choices=["json", "md"],
+        help="Format of the cr_integration_file (json or markdown). Default is markdown."
     )
     parser.add_argument(
         "-j",

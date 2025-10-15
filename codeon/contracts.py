@@ -15,6 +15,7 @@ def checks(*args, **kwargs):
     kwargs.update(get_package_data(*args, **kwargs))
     kwargs.update(clean_paths(*args, **kwargs))
     check_env_vars(*args, **kwargs)
+    kwargs.update(get_cr_deliverable(*args, **kwargs))
     return kwargs
 
 def check_env_vars(*args, **kwargs):
@@ -85,6 +86,11 @@ def normalize_path(path: str, *args, **kwargs) -> str:
         if os.path.exists(os.path.abspath(os.path.join(os.getcwd(), p))):
             p = os.path.abspath(os.path.join(os.getcwd(), p))
     return os.path.normpath(p)
+
+def get_cr_deliverable(*args, integration_format:str='md', **kwargs):
+    deliverable = sts.integration_formats.get(integration_format)
+    return {'cr_deliverable': deliverable}
+
 
 def update_params(*args, **kwargs) -> dict:
     """Updates parameters for the run method."""
