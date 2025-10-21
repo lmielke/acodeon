@@ -29,6 +29,7 @@ def wrap_text(text:str, *args, max_chars:int=sts.table_max_chars, **kwargs):
 
 def pretty_prompt(prompt:str, *args, verbose:int=0, **kwargs) -> str:
     prompt = re.sub(r'<user_comment>\s*</user_comment>', '', prompt, flags=re.MULTILINE)
+    prompt = strip_ansi_codes(prompt)
         # we replace the <tags> in prompt with colorized tags
     p = (
             prompt.replace('deliverable>', f"{Back.MAGENTA}deliverable{Style.RESET_ALL}>")
@@ -210,3 +211,14 @@ def play_sound(status: str):
         elif status == "ERROR":
             winsound.Beep(200, 150)
             winsound.Beep(100, 550)
+
+def strip_ansi_codes(text: str) -> str:
+    """
+    Strip ANSI escape sequences from a text string.
+    Args:
+        text (str): Text containing ANSI escape codes.
+    Returns:
+        str: Text with ANSI codes removed.
+    """
+    ansi_escape = re.compile(r'\x1b\[([0-9]+)(;[0-9]+)*m')
+    return ansi_escape.sub('', text)

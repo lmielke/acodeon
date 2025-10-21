@@ -1,37 +1,41 @@
 """
 codeon.py
 This is an example module for a properly formatted Python codeontype project.
-It contains the DefaultClass used for codeontyping Python projects.
+It contains the Codeon used for codeontyping Python projects.
 """
 
 # Standard library imports in alphabetical order
-import os
-import re
-import time
-from datetime import datetime as dt
-import yaml
-
 # Local application imports in alphabetical order
 import codeon.settings as sts
+import codeon.helpers.printing as printing
+from codeon.prompter import Prompter
+import codeon.contracts as contracts
 
-class DefaultClass:
+
+class Codeon:
     """
-    DefaultClass is a class for codeontyping Python projects.
+    Codeon is a class for codeontyping Python projects.
     NOTE: **kwargs are critical in this class to allow for the passing of arguments
     """
 
-    def __init__(self, *args, pg_name: str = None, verbose: int = 0, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         """
-        Initializes DefaultClass with the following attributes.
+        Initializes Codeon with the following attributes.
         """
-        self.verbose = verbose
-        self.pg_name = pg_name
+        self.p = Prompter(*args, **kwargs)
 
-    def __str__(self, *args, **kwargs) -> str:
-        """
-        String representation of the DefaultClass instance.
+    def __call__(self, *args, **kwargs):
+        kwargs = contracts.checks(*args, **kwargs)
+        self.p(*args, **kwargs)
+        self.get_response(*args, **kwargs)
+        return self
 
-        Returns:
-            str: The string representation of the class instance.
-        """
-        return f"DefaultClass: {self.pg_name = }"
+    def get_response(self, *args, api, **kwargs) -> str:
+        payload = Prompter.model_call_params(*args, 
+                                                api='thought', 
+                                                work_file_name=self.p.work_file_name,
+                                                external_prompt=self.p.prompt, 
+                                                **kwargs)
+        r = Prompter.model_call(payload, *args, **kwargs)
+        printing.pretty_prompt(r, *args, **kwargs)
+

@@ -16,7 +16,12 @@ def checks(*args, **kwargs):
     kwargs.update(clean_paths(*args, **kwargs))
     check_env_vars(*args, **kwargs)
     kwargs.update(get_cr_deliverable(*args, **kwargs))
+    kwargs_fmt(*args, **kwargs)
     return kwargs
+
+def kwargs_fmt(*args, **kwargs):
+    assert type(kwargs.get('infos', [])) == list, (f"{Fore.RED}contracs.kwargs_fmt: "
+                                                    f"-i --info must be a list {Fore.RESET}")
 
 def check_env_vars(*args, **kwargs):
     """

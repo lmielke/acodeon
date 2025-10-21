@@ -242,18 +242,6 @@ def save_table(tbl, *args, **kwargs):
     with open(table_path, 'w', encoding='utf-8') as f:
         f.write(tbl)
 
-def strip_ansi_codes(text: str) -> str:
-    """
-    Strip ANSI escape sequences from a text string.
-    Args:
-        text (str): Text containing ANSI escape codes.
-    Returns:
-        str: Text with ANSI codes removed.
-    """
-    ansi_escape = re.compile(r'\x1b\[([0-9]+)(;[0-9]+)*m')
-    return ansi_escape.sub('', text)
-
-
 # project environment info
 def pipenv_is_active(exec_path, *args, **kwargs):
     """
