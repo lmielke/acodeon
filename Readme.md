@@ -35,49 +35,52 @@ codeon code -s target_file_name.py -p '__CR Prompt__ text or file name' [--hard]
 - **prompt_info:** generates the prompt context for the target package to be send to the LLM
 - **code:** integrates all prior steps: generates the prompt, calls the LLM, creates/updates the target file
 
-
-Each file must begin with a **package cr-header** defining the operation (create, update).  
-Each code block in the file has its own **unit cr-header** (insert_before, insert_after, replace, remove).
-
 ## What are cr-headers?
-CR headers are commented instruction lines inside the `__cr_integration_file__` that tell the Acodeon APIs
-how to modify the target file.
+In order to implement CRs the update engine must know the location of the target files/modules and target code objects. Also the kind of operation perfomed on the target file must be provided. CR headers are commented instruction lines inside the `__cr_integration_file__` that tell the integration engine
+how to modify the target file by providing both the target file/module name as well as the target code objects and operations to perform.
 
-### Types of cr-headers
 #### Package cr-header (mandatory)
-Indicates the file-level operation to perform:
+The target module/file must ALLWAYS be declared to perform create or update operations.
 ```python
 #--- cr_op: create, cr_type: file, cr_anc: test_parsers_data.py ---#
+# module/file content ...
 ```
 
 #### Unit cr-header
-Indicates the operation on a specific code object:
+Inside the target module/file each targeted code block must be declared to guide the engines operations.
 ```python
 #-- cr_op: insert_after, cr_type: import, cr_anc: import time, install: False --#
+# code block content ...
 ```
 
-### Common cr-header fields
-- **cr_op:** operation (create, update, insert_after, insert_before, replace, remove)
-- **cr_type:** object type (file, import, class, method, etc.)
-- **cr_anc:** the spatial anchor (target or insertion point)
-- **install:** optional bool; whether a dependency install is required
+### Valid cr-header fields
+The update engine accepts the folloing fields in this specific order and format:
+1. **cr_op:** operation to perform (create, update, insert_after, insert_before, replace, remove)
+2. **cr_type:** object type (file, import, class, method, etc.)
+3. **cr_anc:** anchor [class.method_name, class-name, import] to insert before/after, or replace/remove
+4. **install:** optional bool; whether a dependency install is required
+Note: Do not use other fields than the fields listed above!
+
+### FAQ
+Some header fields depend on others:
+- cr_type: method -> cr_anc: ClassName.MethodName
+- cr_type: class -> cr_anc: ClassName
+- cr_type: import -> cr_anc: import statement
 
 ## Creating a change-request
-The process consists of four steps:
-
 1. A user writes a **CR Prompt** describing desired code changes (with `prompt_info`).
-2. The LLM generates a **__cr_integration_file__** and delivers it as a JSON string.
+2. The LLM generates a __cr_integration_file__ and delivers it directly or as a JSON string.
 3. codeon processes the JSON to create the `__cr_integration_file__`.
 4. codeon then applies it to create/update/remove the target file according to CQ:EX-LLM standards.
 **CQ:EX-LLM** = Code Quality Excellence — concise, deterministic, professional Python generation.
 
----
+## Example (example.py)
+The following shows a illustrative EXAMPLE of a CR process applied to a imaginary `example.py` file. The updated module will contain all requested changes, each clearly marked with its respective CR headers.
 
-## Worked Example (headers.py)
-
-### Start state (reduced)
+### CR Example Target Module (reduced)
 ```python
 from dataclasses import asdict, dataclass
+import os
 from enum import Enum
 import yaml
 
@@ -116,35 +119,35 @@ class UnitCrHeads(CrHeads):
 ```
 
 ### CR Prompt example (__cr_prompt_)
-Below is an example of a CR prompt that would generate the desired changes.
-```markdown
-Please update headers.py:
+This is an illustrative example of a CR.
 - Add PackageCrHeads using '#--- ' … ' ---#' tokens and print a green message when a package header loads.
 - Add CrHeads.create_marker(cr_id: str|None) -> str to render headers.
 - Replace CrHeads.load_string with a stricter version that asserts dict shape.
 - Remove the private coercion helper.
-- Insert colorama import via an insert_after on "import os".
+- Insert colorama import via an insert_after on 'import os'.
 - Keep methods short and deterministic.
 NOTE: CQ:EX-LLM to generate professional Python.
-```
 
-### Target State
-The resulting updated `headers.py` will contain all requested changes, each clearly marked with its respective CR headers.
 Example markers:
 
 ```python
-#-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False, cr_id: 2025-10-09-12-32-22 --#
-#-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string, cr_id: 2025-10-09-12-32-22 --#
+#-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False --#
+#-- cr_op: replace, cr_type: method, cr_anc: CrHeads.load_string --#
 ```
 
-### __cr_integration_file__
-```python
-#--- cr_op: update, cr_type: file, cr_anc: headers.py ---#
+### Example __cr_integration_file__
+The module in this example contains multiple classes that can be modified. This example contains all modifications (delta) to one of the classes and adds a new class.
 
+```python
+# example.py shows how the cr_integration_file should be structured
+#--- cr_op: update, cr_type: file, cr_anc: example.py ---#
+
+# in this example, the colorama import must be inserted after "import os"
 #-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False --#
 from colorama import Fore, Style
 
-#-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string --#
+# in this example, the existing load_string method is replaced with the new version
+#-- cr_op: replace, cr_type: method, cr_anc: CrHeads.load_string --#
 def load_string(self, *args, head: str, **kwargs):
     s = head[len(self.start_token):-len(self.end_token)].strip()
     d = yaml.safe_load('\n'.join(p.strip() for p in s.split(',')))
@@ -153,7 +156,7 @@ def load_string(self, *args, head: str, **kwargs):
         em = self._enum_map.get(k)
         setattr(self, k, em(v) if em else v)
 
-#-- cr_op: remove, cr_type: method, class_name: CrHeads, cr_anc: _coerce --#
+#-- cr_op: remove, cr_type: method, cr_anc: CrHeads._coerce --#
 
 #-- cr_op: insert_after, cr_type: method, cr_anc: CrHeads.__init__ --#
 def create_marker(self, *args, cr_id: str | None = None, **kwargs) -> str:
@@ -175,12 +178,13 @@ class PackageCrHeads(CrHeads):
         print(f"{Fore.GREEN}Loaded package cr-header{Style.RESET_ALL}")
 ```
 
-### __cr_integration_json__
+
+### Example __cr_integration_json__
 
 ```json
 {
-  "target": "headers.py",
-  "content": "#--- cr_op: update, cr_type: file, cr_anc: headers.py ---#\n#-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False --#\nfrom colorama import Fore, Style\n\n#-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string --#\ndef load_string(self, *args, head: str, **kwargs):\n    '''Strict parse to avoid silent drift.'''\n    s = head[len(self.start_token):-len(self.end_token)].strip()\n    d = yaml.safe_load('\\n'.join(p.strip() for p in s.split(',')))\n    assert isinstance(d, dict), 'Parsed cr-header is not a dict.'\n    for k, v in d.items():\n        em = self._enum_map.get(k)\n        setattr(self, k, em(v) if em else v)\n\n#-- cr_op: remove, cr_type: method, class_name: CrHeads, cr_anc: _coerce --#\n\n#-- cr_op: insert_after, cr_type: method, cr_anc: CrHeads.__init__ --#\ndef create_marker(self, *args, cr_id: str|None=None, **kwargs) -> str:\n    '''Render normalized header for traceable diffs.'''\n    keys = ('cr_op','cr_type','cr_anc','install')\n    data = {k: getattr(self,k) for k in keys if getattr(self,k,None) is not None}\n    if cr_id: data['cr_id'] = cr_id\n    parts = [f\"{k}: {getattr(v,'value',v)}\" for k,v in data.items()]\n    return f\"{self.start_token}{', '.join(parts)}{self.end_token}\"\n\n#-- cr_op: insert_after, cr_type: class, cr_anc: CrHeads --#\nclass PackageCrHeads(CrHeads):\n    def __init__(self, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        self.start_token, self.end_token = '#--- ', ' ---#'\n    def __call__(self, *args, head: str, **kwargs):\n        self.load_string(head=head)\n        print(f\"{Fore.GREEN}Loaded package cr-header{Style.RESET_ALL}\")\n"
+  "target": "example.py",
+  "content": "#--- cr_op: update, cr_type: file, cr_anc: example.py ---#\n#-- cr_op: insert_after, cr_type: import, cr_anc: import os, install: False --#\nfrom colorama import Fore, Style\n\n#-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: load_string --#\ndef load_string(self, *args, head: str, **kwargs):\n    '''Strict parse to avoid silent drift.'''\n    s = head[len(self.start_token):-len(self.end_token)].strip()\n    d = yaml.safe_load('\\n'.join(p.strip() for p in s.split(',')))\n    assert isinstance(d, dict), 'Parsed cr-header is not a dict.'\n    for k, v in d.items():\n        em = self._enum_map.get(k)\n        setattr(self, k, em(v) if em else v)\n\n#-- cr_op: remove, cr_type: method, class_name: CrHeads, cr_anc: _coerce --#\n\n#-- cr_op: insert_after, cr_type: method, cr_anc: CrHeads.__init__ --#\ndef create_marker(self, *args, cr_id: str|None=None, **kwargs) -> str:\n    '''Render normalized header for traceable diffs.'''\n    keys = ('cr_op','cr_type','cr_anc','install')\n    data = {k: getattr(self,k) for k in keys if getattr(self,k,None) is not None}\n    if cr_id: data['cr_id'] = cr_id\n    parts = [f\"{k}: {getattr(v,'value',v)}\" for k,v in data.items()]\n    return f\"{self.start_token}{', '.join(parts)}{self.end_token}\"\n\n#-- cr_op: insert_after, cr_type: class, cr_anc: CrHeads --#\nclass PackageCrHeads(CrHeads):\n    def __init__(self, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        self.start_token, self.end_token = '#--- ', ' ---#'\n    def __call__(self, *args, head: str, **kwargs):\n        self.load_string(head=head)\n        print(f\"{Fore.GREEN}Loaded package cr-header{Style.RESET_ALL}\")\n"
 }
 
 ```

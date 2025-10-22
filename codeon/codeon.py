@@ -1,11 +1,8 @@
 """
 codeon.py
-This is an example module for a properly formatted Python codeontype project.
-It contains the Codeon used for codeontyping Python projects.
+Handles a codeon CR (Change Request) from start to finish.
 """
-
-# Standard library imports in alphabetical order
-# Local application imports in alphabetical order
+import os
 import codeon.settings as sts
 import codeon.helpers.printing as printing
 from codeon.prompter import Prompter
@@ -13,29 +10,38 @@ import codeon.contracts as contracts
 
 
 class Codeon:
-    """
-    Codeon is a class for codeontyping Python projects.
-    NOTE: **kwargs are critical in this class to allow for the passing of arguments
-    """
+
 
     def __init__(self, *args, **kwargs) -> None:
-        """
-        Initializes Codeon with the following attributes.
-        """
-        self.p = Prompter(*args, **kwargs)
+        self.cr = Prompter(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
         kwargs = contracts.checks(*args, **kwargs)
-        self.p(*args, **kwargs)
-        self.get_response(*args, **kwargs)
+        self.cr(*args, **kwargs)
+        kwargs.update(contracts.update_params(*args, **kwargs))
+        self.create_cr_file(*args, **kwargs)
+        self.model_create_cr(*args, **kwargs)
         return self
 
-    def get_response(self, *args, api, **kwargs) -> str:
+    def model_create_cr(self, *args, api, **kwargs) -> str:
         payload = Prompter.model_call_params(*args, 
                                                 api='thought', 
-                                                work_file_name=self.p.work_file_name,
-                                                external_prompt=self.p.prompt, 
+                                                external_prompt=self.cr.prompt, 
                                                 **kwargs)
         r = Prompter.model_call(payload, *args, **kwargs)
         printing.pretty_prompt(r, *args, **kwargs)
+        self.create_integration_file(r, *args, **kwargs)
 
+    def create_cr_file(self, *args, work_file_name:str, cr_id:str, pg_name:str, **kwargs) -> None:
+        printing.pretty_dict('kwargs', kwargs)
+        cr_prompt_dir = sts.cr_prompt_dir(pg_name)
+        cr_prompt_fiel_name = sts.cr_prompt_file_name(work_file_name, cr_id)
+        with open(os.path.join(cr_prompt_dir, cr_prompt_fiel_name), 'w', encoding='utf-8') as f:
+            f.write(self.cr.prompt)
+
+    def create_integration_file(self, r, *args, work_file_name:str, cr_id:str, pg_name:str, **kwargs) -> None:
+        printing.pretty_dict('kwargs', kwargs)
+        cr_integration_dir = sts.cr_integration_dir(pg_name)
+        # cr_integration_file_name = sts.cr_integration_file_name(work_file_name, cr_id)
+        with open(os.path.join(cr_integration_dir, work_file_name), 'w', encoding='utf-8') as f:
+            f.write(r)

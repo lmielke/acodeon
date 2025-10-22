@@ -33,6 +33,14 @@ def mk_args():
         help="Prompt describing the change request (used with 'create', 'update')."
     )
     parser.add_argument(
+        "-o",
+        "--cr_op",
+        type=str,
+        choices=["create", "update"],
+        default="update",
+        help="Operation type: create or update (used with 'create', 'update')."
+    )
+    parser.add_argument(
         "-s",
         "--source_path",
         type=str,

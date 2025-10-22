@@ -222,3 +222,15 @@ def strip_ansi_codes(text: str) -> str:
     """
     ansi_escape = re.compile(r'\x1b\[([0-9]+)(;[0-9]+)*m')
     return ansi_escape.sub('', text)
+
+def clean_pipe_text(text: str) -> str:
+    """WHY: Keep Unicode intact; unescape \n/\t; strip ANSI; fix cp1252-mojibake."""
+    t = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)  # remove ANSI
+    t = (t.replace('\\r\\n', '\r\n')
+         .replace('\\n', '\n')
+         .replace('\\r', '\r')
+         .replace('\\t', '\t'))
+    if 'â' in t:  # heuristic: fix UTF-8 seen as cp1252
+        try: t = t.encode('latin-1').decode('utf-8')
+        except Exception: pass
+    return t

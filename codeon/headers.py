@@ -9,8 +9,8 @@ from enum import Enum
 @dataclass
 class CR_OBJ_FIELDS:
     CR_OP: str = "cr_op"        # cr operation to perform (i.e. insert_before, insert_after, replace, remove)
-    CR_TYPE: str = "cr_type"    # type of object to operate on (i.e. import, method, function, class, raw, file)
-    CR_ANC: str = "cr_anc"      # anchor text to locate position in the target module
+    CR_TYPE: str = "cr_type"    # type of object to be updated (i.e. import, method, function, class, raw, file)
+    CR_ANC: str = "cr_anc"      # relative update location in the target module
     INSTALL: str = "install"    # whether to install a package (True/False)
 
     def to_dict(self) -> dict:

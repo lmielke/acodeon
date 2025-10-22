@@ -20,7 +20,8 @@ def checks(*args, **kwargs):
     return kwargs
 
 def kwargs_fmt(*args, **kwargs):
-    assert type(kwargs.get('infos', [])) == list, (f"{Fore.RED}contracs.kwargs_fmt: "
+    if kwargs.get('info') is not None:
+        assert type(kwargs.get('infos', [])) == list, (f"{Fore.RED}contracs.kwargs_fmt: "
                                                     f"-i --info must be a list {Fore.RESET}")
 
 def check_env_vars(*args, **kwargs):

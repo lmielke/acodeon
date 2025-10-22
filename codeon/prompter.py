@@ -1,5 +1,5 @@
 # prompter.py
-import jinja2, json, os, re, requests
+import ast, jinja2, json, os, re, requests
 import pyperclip as pc
 from colorama import Fore, Style
 
@@ -24,17 +24,55 @@ class Prompter:
         return self
 
 
-    def mk_prompt(self, *args, api, work_file_name:str=None, **kwargs) -> str:
-        _cr_prompt = self.render_from_kwargs(*args,**kwargs).get('cr_prompt_template')
-        # extract context block between from_split/to_split
-        self.work_file_name = self.set_work_file(*args, work_file_name=work_file_name, **kwargs)
-        payload = Prompter.model_call_params(*args, api='prompt', 
-                                                user_prompt=_cr_prompt, 
-                                                work_file_name=self.work_file_name, **kwargs)
-        prompt = Prompter.model_call(payload, *args, **kwargs)
-        prompt = self.add_guidlines(prompt, *args, **kwargs)
-        prompt += f"\n# 3. Instructions:\n{_cr_prompt}\n"
-        return prompt
+    def mk_prompt(self, *args, api, **kwargs) -> str:
+        payload = Prompter.model_call_params(*args, api='prompt',
+                # preliminary prompt for alter to work properly
+                user_prompt=self.render(f"{sts.cr_sts['cr_title']}", **kwargs),
+                **kwargs)
+        _cr_prompt = self.render(   f"{sts.cr_sts['cr_title']}\n"
+                                    f"{sts.cr_sts['cr_prefix']}", *args, **kwargs)
+        _cr_prompt += Prompter.model_call(payload, *args, **kwargs)
+        _cr_prompt = self.insert_guidlines(_cr_prompt, *args, **kwargs)
+        _cr_prompt += self.render(  f"\n\n{sts.cr_sts['cr_prompt_head']}"
+                                                f"\n{sts.cr_sts['cr_prompt']}\n"
+                                                f"{sts.cr_sts['cr_suffix']}\n", **kwargs)
+        _cr_prompt += self.add_entry_point(*args, **kwargs)
+        return printing.clean_pipe_text(_cr_prompt)
+
+    def add_entry_point(self, *args,    source_path:str=None,
+                                            cr_op:str,
+                                            cr_type:str = 'tbd',
+                                            cr_anc:str = 'tbd',
+        **kwargs) -> str:
+        if cr_op is None or cr_op not in ['create', 'update']:
+            return ''
+        if source_path is not None:
+            cr_anc = Prompter.class_names_from_file(path=source_path, *args, **kwargs)
+        with open(sts.cr_integration_file_templ_path, "r", encoding="utf-8") as f:
+            starting_string = ( f"```python\n"
+                                f"{self.render(f.read(),
+                                        cr_op=cr_op,
+                                        cr_type=cr_type,
+                                        cr_anc=cr_anc,
+                                    **kwargs)}"
+                                f"```\n"
+                                )
+
+        template = f"\n{sts.start_head}\n" + self.render(
+                                                f"{sts.start_prefix}\n{sts.start_string}\n", 
+                                                starting_string=starting_string, 
+                                                        **kwargs)
+        print(f"{Fore.YELLOW}{template}{Fore.RESET}")
+        return template
+
+    @staticmethod
+    def class_names_from_file(path: str, *args, **kwargs) -> list[str]:
+        """WHY: Parse classes without executing code (safe, fast)."""
+        with open(path, "r", encoding="utf-8") as f:
+            s = f.read()
+        t = ast.parse(s, filename=path)
+        return f"[{', '.join([n.name for n in ast.walk(t) if isinstance(n, ast.ClassDef)])}]"
+
 
     @staticmethod
     def model_call_params(*args, api='prompt',
@@ -68,21 +106,12 @@ class Prompter:
                         .json()
                         .get("response")
                 )
-        prompt = f"{sts.from_split}\n{r.rsplit(sts.from_split, 1)[-1].rsplit(sts.to_split, 1)[0]}"
+        prompt = f"# {sts.from_split}\n{r.rsplit(sts.from_split, 1)[-1].rsplit(sts.to_split, 1)[0]}"
         if integration_format == "md":
             prompt = prompt.split(sts.readme_split)[0]
         return prompt
 
-    def set_work_file(self, *args, source_path:str=None, work_file_name:str=None, **kwargs) -> str:
-        try:
-            work_file_name = source_path if os.path.isfile(source_path) else work_file_name
-        except TypeError:
-            pass
-        assert work_file_name, f"prompt.set_work_file: work_file_name is None or empty!"
-        return work_file_name
-
-
-    def add_guidlines(self, prompt:str, *args, verbose:int=0, **kwargs) -> str:
+    def insert_guidlines(self, prompt:str, *args, verbose:int=0, **kwargs) -> str:
         findr = sts.readme_replace['installs'][0].strip('^')
         repls = sts.readme_replace['installs'][1]
         t_prompt = re.sub(findr, repls, prompt, flags=re.DOTALL | re.MULTILINE)
@@ -99,17 +128,12 @@ class Prompter:
                     f"{Fore.BLUE}...{Style.RESET_ALL}\n"
                     f"{out[-160:]}\n'''")
 
-    def render_from_kwargs(self, *args, **kwargs) -> str:
-        """for now we only have a single prompt template"""
-        pr_fields = {'cr_prompt', 'cr_deliverable', 'integration_format'}
-        assert all([kwargs.get(f) for f in pr_fields]), (
-                                                    f"prompt.render_from_kwargs: "
-                                                    f"One of {pr_fields = } is missing!"
-                                                        )
-        templates = {}
-        for name, setting in sts.user_settings.items():
-            if type(setting) != str:
-                continue
-            elif sts.jinja_seps[0] in setting:
-                templates[name] = jinja2.Template(setting).render(kwargs)
-        return templates
+    def render(self, text, *args, **kwargs) -> str:
+        """jinja2 renders a text using kwargs as context"""
+        assert kwargs, "prompter.render: kwargs must not be empty."
+        pr_fields = set(re.findall(r'{{\s*(\w+)\s*}}', text))
+        context = {f: kwargs.get(f) for f in pr_fields}
+        assert (pr_fields == context.keys()) \
+                and all(context.values()), (f"prompter.render: missing fields in kwargs: "
+                                            f"{pr_fields = }, {context = }")
+        return jinja2.Template(text).render(context) + '\n'

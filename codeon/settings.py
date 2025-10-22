@@ -78,6 +78,7 @@ integration_formats = {
     'md': '__cr_integration_file__',
     'json': '__cr_integration_json__',
 }
+cr_integration_file_templ_path = os.path.join(resources_dir, 'cr_integration_file_template.py')
 temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
 # all cr_prompt files are stored here
 cr_prompt_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_prompt_files')
@@ -100,13 +101,19 @@ if not os.path.exists(user_settings_path):
     with open(user_settings_path, 'w') as f:
         yaml.dump({'package_name': package_name, 'port': 9007}, f)
 
+cr_settings_name = "cr_settings.yml"
+cr_settings_path = os.path.join(resources_dir, cr_settings_name)
+if not os.path.exists(cr_settings_path):
+    with open(cr_settings_path, 'w') as f:
+        yaml.dump({'cr_snippets': 'empty'}, f)
+
 # Load user settings from resources YAML file
-def load_user_settings():
+def load_settings(path):
     """Load user settings from the YAML file."""
-    if not os.path.exists(user_settings_path):
+    if not os.path.exists(path):
         return {}
 
-    with open(user_settings_path, 'r') as f:
+    with open(path, 'r') as f:
         try:
             st = yaml.safe_load(f) or {}
             return {k: vs.strip() if type(vs) == str else vs for k, vs in st.items()}
@@ -115,6 +122,7 @@ def load_user_settings():
             return {}
 
 # we add user settings to the global namespace
-user_settings = load_user_settings()
-# Update the global namespace with user settings
+user_settings = load_settings(user_settings_path)
 globals().update(user_settings)
+cr_sts = load_settings(cr_settings_path)
+globals().update(cr_sts)
