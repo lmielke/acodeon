@@ -16,10 +16,10 @@ class Test__create(unittest.TestCase):
         cls.json_file_path = os.path.join(sts.test_data_dir, "cr_test_parsers_data.json")
         cls.source_path = os.path.join(sts.test_data_dir, "test_parsers_data.py")
         cls.json_string_content, cls.code = cls.mk_json_from_code_file(cls.source_path, cls.json_file_path)
-        cls.expected_path = os.path.join(sts.stage_files_dir(sts.package_name), "test_parsers_data.py")
+        cls.expected_path = os.path.join(sts.cr_stages_dir(sts.package_name), "test_parsers_data.py")
 
     @classmethod
-    def mk_json_from_code_file(cls, source_path: str, target_path: str) -> str:
+    def mk_json_from_code_file(cls, source_path: str, source_path: str) -> str:
         """
         Takes a source code file path and a target file name, and creates a json file from it 
         in the test data directory.
@@ -42,7 +42,7 @@ class Test__create(unittest.TestCase):
                         'target': target,
                         'code': code
         }
-        with open(target_path, "w", encoding="utf-8") as f_json:
+        with open(source_path, "w", encoding="utf-8") as f_json:
             json.dump(json_data, f_json, indent=4)
         return json.dumps(json_data), code
 

@@ -18,9 +18,9 @@ pipenv install
 ## How to run codeon
 ```shell
 codeon create -s 'json_string' [ --hard ] [ -b ]
-codeon update -s target_file_name.py [ --hard ] [ -b ]
-codeon prompt_info -s target_file_name -i package -v 2
-codeon code -s target_file_name.py -p '__CR Prompt__ text or file name' [--hard] [ -b ]
+codeon update -s work_file_name.py [ --hard ] [ -b ]
+codeon prompt_info -s work_file_name -i package -v 2
+codeon code -s work_file_name.py -p '__CR Prompt__ text or file name' [--hard] [ -b ]
 ```
 
 ## How it Works

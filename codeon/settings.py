@@ -79,21 +79,36 @@ integration_formats = {
     'json': '__cr_integration_json__',
 }
 cr_integration_file_templ_path = os.path.join(resources_dir, 'cr_integration_file_template.py')
-temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
-# all cr_prompt files are stored here
-cr_prompt_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_prompt_files')
-cr_prompt_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.md'
 cq_ex_llm_file = os.path.join(resources_dir, 'CQ-EX-LLM.md')
+temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
+# do not change order here
+# all cr_prompt files are stored here
+cr_prompt_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_prompts')
+cr_prompt_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.md'
+# all cr_json_files are staged here
+cr_jsons_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_jsons')
+cr_json_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.json'
 # all cr_integration_files are staged here
-cr_integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_integration_files')
-cr_integration_archived_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.py'
-stage_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'stage_files')
-json_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_json_files')
-json_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.json'
-restore_files_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'{pg_name}_archive')
+cr_integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_integrations')
+cr_integration_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.py'
+# staging dir for source update files
+cr_stages_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_stages')
+cr_stage_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+# restoring overwritten source files is done from here
+cr_restores_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'{pg_name}_archive')
+cr_restore_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+
+cr_paths = {
+    'cr_prompt_path': (cr_prompt_dir, cr_prompt_file_name),
+    'cr_json_path': (cr_jsons_dir, cr_json_file_name),
+    'cr_integration_path': (cr_integration_dir, cr_integration_file_name),
+    'cr_stage_path': (cr_stages_dir, cr_stage_file_name),
+    'cr_restore_path': (cr_restores_dir, cr_restore_file_name),
+}
+
 
 json_target, json_content = 'target', 'code'
-exists_status = 'already exists'
+# exists_status = 'already exists'
 
 user_settings_name = "settings.yml"
 user_settings_path = os.path.join(resources_dir, user_settings_name)

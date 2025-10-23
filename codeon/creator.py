@@ -13,9 +13,15 @@ class JsonEngine:
     """
 
     def __init__(self, *args, json_string: str, **kwargs):
+        # two representations of the JSON: string and dict
         self.json_string = json_string
         self.data = None
-        self.staged_path = None
+        # json content after parsing
+        self.json_path = None
+        self.work_file_name = None
+        self.content = None
+        self.status = None
+        # list of strategies to try in order
         self.strategies = [
             self._strategy_strict_parse,
             self._strategy_find_json_block,
@@ -31,9 +37,10 @@ class JsonEngine:
         if not self.data:
             return self
         # we also save the json to json_path for reference
-        self.json_path = self.write_json(*args, **kwargs)
-        # if data is found we save it to cr_integration_dir
-        self.staged_path = self.stage_from_json(*args, **kwargs)
+        self.json_path, self.work_file_name = self.get_path(*args, **kwargs)
+        self.write_json(*args, **kwargs)
+        self.content = self.data.get(sts.json_content)
+        self.status = True if self.json_path is not None else False
         return self
 
     def parse(self, *args, **kwargs) -> dict | None:
@@ -77,54 +84,57 @@ class JsonEngine:
         self.json_string = self.json_string if d is not None else prev
         return d
 
-    def stage_from_json(self, *args, verbose: int = 0, **kwargs ) -> str | None:
-        try:
-            cr_integration_file = self.test_path('staging', *args, **kwargs)
-            if cr_integration_file.endswith(sts.exists_status):
-                return cr_integration_file
-            print(f"{Fore.GREEN}JsonEngine writing:{Fore.RESET} {cr_integration_file.replace(os.path.expanduser('~'), '~')}")
-            with open(cr_integration_file, "w", encoding="utf-8") as f:
-                f.write(self.data[sts.json_content])
-            return cr_integration_file
-        except (KeyError, IOError) as e:
-            print(f"{Fore.RED}Failed to stage cr_integration_file: "
-                  f"{e}{Style.RESET_ALL}")
-            return None
+    def get_path(self, *args, pg_name:str, cr_id:str, **kwargs):
+        # gets the path from json string
+        work_file_name = self.data.get(sts.json_target)
+        cr_json_path = os.path.join(
+                                        sts.cr_jsons_dir(pg_name), 
+                                        sts.cr_json_file_name(work_file_name, cr_id))
+        return cr_json_path, work_file_name
 
     def write_json(self, *args, **kwargs):
         # we save the json into json_path
-        json_path = self.test_path('json', *args, **kwargs)
-        if json_path.endswith(sts.exists_status):
-            return json_path
-        print(f"{Fore.GREEN}JsonEngine writing:{Fore.RESET} {json_path.replace(os.path.expanduser('~'), '~')}")
-        with open(json_path, "w", encoding="utf-8") as f_json:
+        with open(self.json_path, "w", encoding="utf-8") as f_json:
             f_json.write(self.json_string)
-        return json_path
 
-    def test_path(self, phase, *args, cr_id, pg_name, **kwargs):
-        out_path = ""
-        if phase == 'json':
-            files_dir = sts.json_files_dir(pg_name)
-            out_path = os.path.join(
-                                        files_dir, 
-                                        sts.json_file_name(self.data[sts.json_target], cr_id)
-                                        )
-            if os.path.exists(out_path):
-                print(f"{Fore.YELLOW}creator.test_path:{Fore.RESET} {out_path.replace(os.path.expanduser('~'), '~')} already exists!")
-                return f"json file {sts.exists_status}"
-        elif phase == 'staging':
-            files_dir = sts.cr_integration_dir(pg_name)
-            out_path = os.path.join(
-                        files_dir, 
-                        sts.cr_integration_archived_name(self.data[sts.json_target], cr_id)
-                                )
-            if os.path.exists(out_path):
-                print(f"{Fore.YELLOW}creator.test_path:{Fore.RESET} {out_path.replace(os.path.expanduser('~'), '~')} already exists!")
-                return f"staging file {sts.exists_status}"
-            else:
-                out_path = os.path.join(files_dir, self.data[sts.json_target])
-                if os.path.exists(out_path):
-                    print(f"{Fore.YELLOW}creator.test_path{Fore.RESET}: {out_path.replace(os.path.expanduser('~'), '~')} already exists!")
-                    return f"json file {sts.exists_status}"
-        os.makedirs(files_dir, exist_ok=True)
-        return out_path
+class IntegrationEngine:
+    """
+    Handles cleaning and staging of the cr_integration_file content
+    extracted from a JSON payload.
+    WHY: Separates file staging/cleaning from JSON parsing.
+    """
+
+    # Regex to find the mandatory package header
+    pkg_header_re = re.compile(r"(#--- cr_op:.*?---#)", re.DOTALL)
+    # Regex for markdown code fences (optional language specifier)
+    md_fence_re = re.compile(
+        r"^\s*```[a-zA-Z]*\n|(\n\s*```\s*$)", re.MULTILINE
+    )
+
+    def __init__(self, *args, content: str, work_file_name: str, **kwargs):
+        self.raw_content = content
+        self.work_file_name = work_file_name
+        self.cleaned_content = None
+        self.status = None
+
+    def __call__(self, *args, cr_id: str, pg_name: str, **kwargs ) -> "IntegrationEngine":
+        self.cleaned_content = self._clean_content(*args, **kwargs)
+        self._write_content(*args, **kwargs)
+        return self
+
+    def _clean_content(self, *args, **kwargs) -> str:
+        """Removes markdown fences and pre-header text."""
+        match = self.pkg_header_re.search(self.raw_content)
+        content = (
+            self.raw_content[match.start() :]
+            if match
+            else self.raw_content
+        )
+        content = self.md_fence_re.sub("", content)
+        return content.strip()
+
+    def _write_content(self, *args, cr_integration_path:str, **kwargs):
+        """Writes the cleaned content to the staged path."""
+        print(f"{Fore.GREEN}IntegrationEngine writing: {cr_integration_path = }{Fore.RESET}")
+        with open(cr_integration_path, "w", encoding="utf-8") as f:
+            f.write(self.cleaned_content)

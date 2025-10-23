@@ -7,7 +7,7 @@ from codeon.helpers.collections import temp_chdir
 from codeon.helpers.file_info import CrPaths
 from codeon.parsers import CSTSource, CSTDelta
 from codeon.headers import OP_P
-from codeon.creator import JsonEngine
+from codeon.creator import JsonEngine, IntegrationEngine
 from codeon.transformer import ApplyChangesTransformer
 import codeon.settings as sts
 
@@ -20,6 +20,8 @@ class Updater:
         self.csts = CSTSource(*args, **kwargs)
         self.cstd = CSTDelta(*args, **kwargs)
         self.status_dict = {}
+        self.cr_fields = lambda kwargs: {k: v for k, v in kwargs.items() if k in CrPaths.__dataclass_fields__}
+        self.cr_paths = CrPaths(*args, api=api, **self.cr_fields(kwargs))
         self.F = Validator_Formatter()
 
     def __call__(self, *args, json_string:str=None, **kwargs) -> dict | None:
@@ -27,27 +29,23 @@ class Updater:
         kwargs = contracts.update_params(*args, **kwargs)
         if kwargs.get('work_dir') is None:
             return None
-        if json_string is None and kwargs.get('files_exist') == False:
-            return None
         if json_string is not None:
             kwargs = self.create_from_json_source(*args, json_string=json_string, **kwargs)
-            # a json_string might have already been processed
-            if kwargs.get('status', '').endswith(sts.exists_status):
-                print(f"{Fore.RED}ERROR: {kwargs.get('status')}, returning now{Fore.RESET}")
-                return None
         self.status_dict = self.process_cr(*args, **kwargs)
         if self.status_dict is None:
             return None
-        self._archive_cr_file(*args, **kwargs)
         self._log_result(*args, status=bool(self.status_dict), **kwargs)
         return self
 
     def create_from_json_source(self, *args, json_string:str, **kwargs):
         je = JsonEngine(*args, json_string=json_string, **kwargs)(*args, **kwargs)
-        if je.staged_path.endswith(sts.exists_status):
-            return {'status': je.staged_path}
-        elif je.data:
-            kwargs.update(CrPaths._create_paths(je.staged_path, **kwargs))
+        if je.status == (False or None):
+            return {'status': 'JSON parsing failed or was empty'}
+        # 2. Use IntegrationEngine to clean and stage the file
+        kwargs.update({'cr_json_path': je.json_path, 'work_file_name': je.work_file_name})
+        print(f"{je.work_file_name = }")
+        kwargs.update(CrPaths(*args, **self.cr_fields(kwargs)).paths_to_dict())
+        ie = IntegrationEngine(*args, content=je.content, **kwargs)(*args, **kwargs)
         return kwargs
 
     def process_cr(self, *args, work_dir, cr_integration_path, source_path, **kwargs):
@@ -57,7 +55,7 @@ class Updater:
             package_op, cr_ops = self.cstd.body
             tf = ApplyChangesTransformer(self.csts.body, cr_ops, *args, package_op=package_op, **kwargs)
             out_code = self.F(self.csts.body.visit(tf).code, *args, **kwargs)
-            self._write_output(out_code, *args, **kwargs)
+            self._write_output(out_code, *args, source_path=source_path, **kwargs)
         return {
                         'cr_id': kwargs.get('cr_id'),
                         'cr_ops': [op.to_dict() for op, node in cr_ops],
@@ -66,14 +64,6 @@ class Updater:
                         'package_op': str(package_op.cr_op),
         }
 
-    def _archive_cr_file(self, *args, cr_integration_path: str, cr_id: str, **kwargs):
-        """Renames the cr_integration_file by prepending 'cr_[cr_id]_'."""
-        if not all([cr_integration_path, os.path.exists(cr_integration_path)]):
-            return
-        dir, fname = os.path.split(cr_integration_path)
-        if not fname.startswith("cr_"):
-            os.rename(cr_integration_path, os.path.join(dir, f"cr_{cr_id}_{fname}"))
-
     def _log_result(self, *args, status: bool, hard: bool, **kwargs):
         """Prints the final result to the console."""
         if not status:
@@ -81,28 +71,31 @@ class Updater:
             return
         print(f"\n{Fore.GREEN}Transformation complete.{Style.RESET_ALL}")
         if self.api == "update":
-            source, target = kwargs.get("source_path"), kwargs.get("target_path")
+            source, target = kwargs.get("source_path"), kwargs.get("source_path")
             if hard:
                 print(f"  Overwritten: {source}")
             else:
                 print(f"  Original:    {source}\n  Modified:    {target}")
     
-    @staticmethod
-    def _write_output(code: str, *args, target_path: str, pg_name:str, hard:bool, **kwargs) -> bool:
+    def _write_output(self, code: str, *args, 
+        source_path:str, cr_stage_path:str, cr_restore_path:str, hard:bool, **kwargs) -> bool:
         """Writes the final transformed code to the target file path."""
-        # if source_file is overwritten we first backup the existing file for potential restore
-        if hard:
-            restore_path = os.path.join(
-                                            sts.restore_files_dir(pg_name), 
-                                            os.path.basename(target_path)
-                                            )
-            print(f"{Fore.GREEN}Updater._write_restore:{Fore.RESET} {restore_path = }")
-            shutil.copyfile(target_path, restore_path)
-        # then we write the new code
-        print(f"{Fore.GREEN}Updater._write_staging:{Fore.RESET} {target_path = }")
-        with open(target_path, "w", encoding="utf-8") as f:
+        print(f"{Fore.GREEN}Updater._write_staging:{Fore.RESET} {source_path = }")
+        with open(cr_stage_path, "w", encoding="utf-8") as f:
             f.write(code)
+        # if source_file is overwritten we first backup the existing file for potential restore
+        if hard and source_path:
+            shutil.copyfile(source_path, cr_restore_path)
+            # then we write the new code
+            print(f"{Fore.MAGENTA}Updater._write_to source_path:{Fore.RESET} {source_path = }")
+            with open(source_path, "w", encoding="utf-8") as f:
+                f.write(code)
+            self.cleanup(cr_restore_path, *args, **kwargs)
 
+    def cleanup(self, cr_restore_path:str, *args, **kwargs) -> None:
+        _dir, _name = os.path.split(cr_restore_path)
+        renamed = os.path.join(_dir, f"#{_name}")
+        os.rename(cr_restore_path, renamed)
 
 class Validator_Formatter:
     """

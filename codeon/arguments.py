@@ -83,15 +83,11 @@ def mk_args():
         action="store_true",
         help="Run tests on the output file to veryfy correct syntax.",
     )
-
-    # For 'server' API
     parser.add_argument(
         "--port",
         type=str,
         help="Port for the server to run on (e.g., 9007).",
     )
-
-    # For 'info' API
     parser.add_argument(
         "-i",
         "--infos",

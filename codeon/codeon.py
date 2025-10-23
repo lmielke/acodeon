@@ -7,6 +7,7 @@ import codeon.settings as sts
 import codeon.helpers.printing as printing
 from codeon.prompter import Prompter
 import codeon.contracts as contracts
+from codeon.creator import IntegrationEngine
 
 
 class Codeon:
@@ -39,9 +40,7 @@ class Codeon:
         with open(os.path.join(cr_prompt_dir, cr_prompt_fiel_name), 'w', encoding='utf-8') as f:
             f.write(self.cr.prompt)
 
-    def create_integration_file(self, r, *args, work_file_name:str, cr_id:str, pg_name:str, **kwargs) -> None:
+    def create_integration_file(self, r: str, *args, **kwargs) -> None:
+        """Cleans and stages the raw model output."""
         printing.pretty_dict('kwargs', kwargs)
-        cr_integration_dir = sts.cr_integration_dir(pg_name)
-        # cr_integration_file_name = sts.cr_integration_file_name(work_file_name, cr_id)
-        with open(os.path.join(cr_integration_dir, work_file_name), 'w', encoding='utf-8') as f:
-            f.write(r)
+        ie = IntegrationEngine(*args, content=r, **kwargs)(*args, **kwargs)
