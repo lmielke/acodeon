@@ -12,9 +12,12 @@ apis_json_dir = os.path.join(package_dir, "apis", "json_schemas")
 
 test_dir = os.path.join(package_dir, "test")
 test_data_dir = os.path.join(test_dir, "data")
+test_cr_ids = {"9999-99-99-99-99-99", "8888-88-88-88-88-88"}
 
 time_stamp = lambda: dt.now().strftime("%Y-%m-%d-%H-%M-%S")
 session_time_stamp = time_stamp()
+cr_id_regex = r"cr_(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})_"
+to_dt = lambda ts: dt.strptime(ts, "%Y-%m-%d-%H-%M-%S")
 
 ignore_dirs = {
     ".git",
@@ -70,7 +73,10 @@ table_max_chars = 100
 resources_dir = os.path.expanduser(f'~{os.sep}.{package_name}')
 if not os.path.exists(resources_dir):
     os.makedirs(resources_dir)
-
+# cr_headers
+pg_header_regex = r"(#--- cr_op:.*?---#)"
+unit_header_regex = r"(#-- cr_op:.*?--#)(.*?)(?=#--|$)"
+md_fence_regex = r"^\s*```[a-zA-Z]*\n|(\n\s*```\s*$)"
 # the following directories refer to the temporary package structure and logs
 # the resulting paths depend on the work_path or cwd this package is run inside
 # all process files are stored here
@@ -78,6 +84,9 @@ integration_formats = {
     'md': '__cr_integration_file__',
     'json': '__cr_integration_json__',
 }
+
+phases = ('cr_json', 'cr_integration', 'cr_processing')# cr_finalizing
+
 cr_integration_file_templ_path = os.path.join(resources_dir, 'cr_integration_file_template.py')
 cq_ex_llm_file = os.path.join(resources_dir, 'CQ-EX-LLM.md')
 temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
@@ -92,20 +101,26 @@ cr_json_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.js
 cr_integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_integrations')
 cr_integration_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.py'
 # staging dir for source update files
-cr_stages_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_stages')
+cr_stages_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_processing')
 cr_stage_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
 # restoring overwritten source files is done from here
 cr_restores_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'{pg_name}_archive')
 cr_restore_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+# all cr meta data is logged here
+cr_logs_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'cr_logs')
+cr_log_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
 
 cr_paths = {
     'cr_prompt_path': (cr_prompt_dir, cr_prompt_file_name),
     'cr_json_path': (cr_jsons_dir, cr_json_file_name),
     'cr_integration_path': (cr_integration_dir, cr_integration_file_name),
-    'cr_stage_path': (cr_stages_dir, cr_stage_file_name),
+    'cr_processing_path': (cr_stages_dir, cr_stage_file_name),
     'cr_restore_path': (cr_restores_dir, cr_restore_file_name),
+    'cr_log_path': (cr_logs_dir, cr_log_file_name),
 }
 
+file_exists_default = 'NEW'
+rm_cr_prefix = lambda file_name, cr_id: file_name.replace(f'cr_{cr_id}_', '')
 
 json_target, json_content = 'target', 'code'
 # exists_status = 'already exists'

@@ -8,6 +8,7 @@ from typing import Optional, List, Tuple
 import libcst as cst
 from colorama import Fore, Style
 
+import codeon.settings as sts
 from codeon.headers import UnitCrHeads, PackageCrHeads, OP_M, CRTypes
 
 
@@ -44,21 +45,18 @@ class CSTDelta(CSTParserBase):
     and a list of executable module-level operations.
     """
 
-    package_cr_finder = re.compile(r"^(#--- cr_op:.*?---#)", re.MULTILINE)
-    unit_cr_finder = re.compile(r"(#-- cr_op:.*?--#)(.*?)(?=#--|$)", re.DOTALL)
-
     def parse(self, *args, **kwargs) -> tuple:
         """Parses both package and unit cr-headers from the source text."""
-        package_op = self._extract_package_op(*args, **kwargs)
+        pg_op = self._extract_pg_op(*args, **kwargs)
         module_ops = self._extract_module_ops(*args, **kwargs)
-        return package_op, module_ops
+        return pg_op, module_ops
 
-    def _extract_package_op(self, *args, **kwargs) -> Optional[PackageCrHeads]:
+    def _extract_pg_op(self, *args, **kwargs) -> Optional[PackageCrHeads]:
         """
         Finds and parses a single package cr-header, if present.
         NOTE: We are matching with re.findall but only using the first match.
         """
-        matches = self.package_cr_finder.findall(self.source_text)
+        matches = re.compile(sts.pg_header_regex, re.MULTILINE).findall(self.source_text)
         assert len(matches) == 1, "Expected exactly one package cr_op header in line 0."
         # we now know there is exactly one match, we select this first match
         op = PackageCrHeads()
@@ -68,7 +66,7 @@ class CSTDelta(CSTParserBase):
     def _extract_module_ops(self, *args, **kwargs ) -> List:
         """Extracts all module-level operations from the source text."""
         ops = []
-        for head, body in self.unit_cr_finder.findall(self.source_text):
+        for head, body in re.compile(sts.unit_header_regex, re.DOTALL).findall(self.source_text):
             body_node = self._parse_body(body)
             op = UnitCrHeads()
             op(head=head.strip())

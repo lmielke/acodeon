@@ -35,7 +35,7 @@ class OP_S(str, Enum):
 class CRTypes(str, Enum):
     """Target cr_object to perform the operation on."""
     IMPORT, METHOD, FUNCTION, CLASS, RAW, FILE = (
-        "import", "method", "function", "class", "raw", "file"
+        "import", "method", "function", "class", "raw", "file",
     )
 
 
@@ -96,13 +96,14 @@ class CrHeads:
             if value is not None:
                 data[field] = value.value if isinstance(value, Enum) else value
         return data
-
-    def create_marker(self, *args, cr_id:str, **kwargs) -> str:
-        """Creates the formatted output marker string from the instance's state."""
+    
+    #-- cr_op: replace, cr_type: method, class_name: CrHeads, cr_anc: create_marker, cr_id: 8888-88-88-88-88-88 --#
+    def create_marker(self, *args, cr_id: str | None = None, **kwargs) -> str:
+        """Allow emitting a header even when cr_id is unknown/omitted."""
         marker_data = self.to_dict()
         if cr_id:
             marker_data['cr_id'] = cr_id
-        parts = [f"{key}: {value}" for key, value in marker_data.items()]
+        parts = [f"{k}: {v}" for k, v in marker_data.items()]
         return f"{self.start_token}{', '.join(parts)}{self.end_token}"
 
 

@@ -67,7 +67,14 @@ def mk_args():
         help="JSON string with 'target' and 'code' keys (used with 'create').",
     )
     parser.add_argument(
-        "--hard",
+        "-e",
+        "--explicit",
+        action="store_true",
+        default=True,
+        help="If False, restore the CR and all later CRs. Default is True (explicit CR only).",
+        )
+    parser.add_argument(
+        "--hot",
         action="store_true",
         help="Overwrite the source file directly (used with 'update').",
     )

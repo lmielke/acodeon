@@ -54,10 +54,10 @@ def pretty_prompt(prompt:str, *args, verbose:int=0, **kwargs) -> str:
         print(f"{p.strip()}")
     return p
 
-def pretty_dict(name:str, d:dict, *args, **kwargs):
-    print(f"\n{Fore.CYAN}{name} {Fore.RESET}\n{'*' * len(name)}")
+def pretty_dict(name:str, d:dict, *args, color=Fore.CYAN, **kwargs):
+    print(f"\n{color}{name} {Fore.RESET}\n{'*' * len(name)}")
     for k, v in d.items():
-        print(f"{Fore.CYAN}{k}: {Fore.RESET}{v}")
+        print(f"{color}{k}: {Fore.RESET}{v}")
 
 def dict_to_table(name:str, d:dict, *args, **kwargs):
     tbl_dict = wrap_table(d, *args, **kwargs)
@@ -140,7 +140,7 @@ def normalize_max_chars(max_chars:int, text, *args, **kwargs):
         return max_chars // 5
     elif len(text) <= 128:
         return max_chars // 4
-    elif len(text) <= 400:
+    elif len(text) <= 300:
         return max_chars // 3
     elif len(text) <= 1200:
         return max_chars // 2

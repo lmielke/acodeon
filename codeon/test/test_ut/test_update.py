@@ -13,10 +13,11 @@ class Test__update(unittest.TestCase):
     @classmethod
     def setUpClass(cls, *args, **kwargs):
         cls.verbose = 0
+        cls.cr_id = sts.time_stamp()
         cls.test_data = cls.mk_test_data(*args, **kwargs)
+        # cr_ prefix is only used to seperate files inside the test/data dir
         cls.json_file_path = os.path.join(sts.test_data_dir, "cr_headers.json" )
         cls.json_string_content = cls.get_json_str(*args, **kwargs)
-        cls.msg = f" >>>> NOT IMPLEMENTED <<<< "
 
     @classmethod
     def tearDownClass(cls, *args, **kwargs):
@@ -34,7 +35,7 @@ class Test__update(unittest.TestCase):
         cls.test_file_name = f"cr_test_parsers_data.py"
         cls.test_file_path = os.path.join(sts.test_data_dir, cls.test_file_name)
         # we remove cr_ from file which we need in test_data_dir to avoid name collisions
-        cls.test_target_name = cls.test_file_name.replace("cr_", f"cr_{sts.time_stamp()}_")
+        cls.test_target_name = cls.test_file_name.replace("cr_", f"cr_{cls.cr_id}_")
         # we check if a test_target_name containing file already exists and remove it
         # to avoid spamming the target dir
         for n in os.listdir(sts.cr_integration_dir(sts.package_name)):
@@ -50,16 +51,15 @@ class Test__update(unittest.TestCase):
     def test__update_success_path(self, *args, **kwargs):
         """Tests the 'happy path' where the transformation is successful."""
 
-        out = codeon.apis.update.main(
-                                        # json_string=self.json_string_content, 
-                                        source_path=self.test_file_name.replace("cr_", ""), 
+        out = codeon.apis.update.main(  
+                                        json_string=self.json_string_content, cr_id="8888-88-88-88-88-88",
+                                        # source_path="cr_9999-99-99-99-99-99_codeon.py",
+                                        # source_path=self.test_file_name.replace("cr_", ""), 
                                             black=True, 
                                             api='update',
                                             hard=False, 
-                                            verbose=1,
+                                            verbose=3,
                                         )
-
-        print(f"{out = }")
 
     def test_update_halts_on_invalid_cr_op(self):
         """

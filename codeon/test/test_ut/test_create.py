@@ -4,7 +4,6 @@ import unittest
 
 import codeon.settings as sts
 from codeon.apis import create
-from codeon.helpers.file_info import CrPaths
 import codeon.settings as sts
 
 
@@ -16,10 +15,12 @@ class Test__create(unittest.TestCase):
         cls.json_file_path = os.path.join(sts.test_data_dir, "cr_test_parsers_data.json")
         cls.source_path = os.path.join(sts.test_data_dir, "test_parsers_data.py")
         cls.json_string_content, cls.code = cls.mk_json_from_code_file(cls.source_path, cls.json_file_path)
-        cls.expected_path = os.path.join(sts.cr_stages_dir(sts.package_name), "test_parsers_data.py")
+        cls.cr_id = sts.time_stamp()
+        cls.expected_path = os.path.join(   sts.cr_stages_dir(sts.package_name), 
+                                            f"cr_{cls.cr_id}_test_parsers_data.py")
 
     @classmethod
-    def mk_json_from_code_file(cls, source_path: str, source_path: str) -> str:
+    def mk_json_from_code_file(cls, source_path: str, json_file_path: str) -> str:
         """
         Takes a source code file path and a target file name, and creates a json file from it 
         in the test data directory.
@@ -33,7 +34,7 @@ class Test__create(unittest.TestCase):
         if os.path.isfile(source_path):
             with open(source_path, "r", encoding="utf-8") as f:
                 code = f.read()
-            target = os.path.basename(source_path)
+            target = os.path.basename(json_file_path).replace("cr_", "")
         cr_op = "#--- cr_op: create, cr_type: file, cr_anc: test_parsers_data.py ---#"
         # we add the create cr_op at the start of the code if not already present
         if not '#--- cr_op: create' in code:
@@ -42,7 +43,7 @@ class Test__create(unittest.TestCase):
                         'target': target,
                         'code': code
         }
-        with open(source_path, "w", encoding="utf-8") as f_json:
+        with open(json_file_path, "w", encoding="utf-8") as f_json:
             json.dump(json_data, f_json, indent=4)
         return json.dumps(json_data), code
 
@@ -69,7 +70,13 @@ class Test__create(unittest.TestCase):
         # with open(d_path, "r", encoding="utf-8") as f_json:
         #     test_json = f_json.read()
         # print(f"{self.json_string_content = }")
-        status_dict = create.main(json_string=self.json_string_content, api='create', hard=False)
+        status_dict = create.main(
+                                        json_string=self.json_string_content, 
+                                        api='create', 
+                                        hot=False, 
+                                        cr_id=self.cr_id,
+                                        verbose=3,
+                                        )
         self.assertTrue(os.path.exists(self.expected_path))
 
         # Verify the code was written correctly
