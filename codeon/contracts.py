@@ -4,7 +4,6 @@ from colorama import Fore, Style
 from dataclasses import asdict
 
 import codeon.arguments as arguments
-from codeon.helpers.cr_info import CrData
 from codeon.helpers.dir_context import DirContext
 import codeon.settings as sts
 import codeon.helpers.printing as printing
@@ -102,6 +101,4 @@ def get_cr_deliverable(*args, integration_format:str='md', **kwargs):
 def update_params(*args, **kwargs) -> dict:
     """Updates parameters for the run method."""
     kwargs = checks(*args, **kwargs)
-    # fields = {k: v for k, v in kwargs.items() if k in CrData.__dataclass_fields__.keys()}
-    # kwargs.update(asdict(CrData(**fields)))
     return kwargs

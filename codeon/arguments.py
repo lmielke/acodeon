@@ -48,9 +48,9 @@ def mk_args():
     )
     parser.add_argument(
         "-c",
-        "--cr_integration_path",
+        "--cr_entry_source",
         type=str,
-        help="path to the update/cr_integration_file.",
+        help="start object the CR data can be derrived from, can be string or path",
     )
     parser.add_argument(
         "-f",

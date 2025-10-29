@@ -3,13 +3,14 @@
 import re
 import textwrap
 from abc import ABC, abstractmethod
-from typing import Optional, List, Tuple
+# Removed: from typing import Optional, List, Tuple
 
 import libcst as cst
 from colorama import Fore, Style
 
 import codeon.settings as sts
-from codeon.headers import UnitCrHeads, PackageCrHeads, OP_M, CRTypes
+# Updated: Import constants and classes from headers
+from codeon.headers import UnitCrHeads, PackageCrHeads, CR_OPS, CR_TYPES
 
 
 class CSTParserBase(ABC):
@@ -20,7 +21,7 @@ class CSTParserBase(ABC):
         self.V = Validations()
         self.body = None
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> None:
         self.read_source(*args, **kwargs)
         self.body = self.parse(*args, **kwargs)
 
@@ -51,19 +52,22 @@ class CSTDelta(CSTParserBase):
         module_ops = self._extract_module_ops(*args, **kwargs)
         return pg_op, module_ops
 
-    def _extract_pg_op(self, *args, **kwargs) -> Optional[PackageCrHeads]:
+    def _extract_pg_op(self, *args, **kwargs) -> PackageCrHeads | None:
         """
         Finds and parses a single package cr-header, if present.
         NOTE: We are matching with re.findall but only using the first match.
         """
         matches = re.compile(sts.pg_header_regex, re.MULTILINE).findall(self.source_text)
-        assert len(matches) == 1, "Expected exactly one package cr_op header in line 0."
-        # we now know there is exactly one match, we select this first match
+        if len(matches) != 1:
+            # Must be exactly one package header. If not, return None/raise assert.
+            # Choosing to assert based on existing code structure
+            assert len(matches) == 1, "Expected exactly one package cr_op header in line 0."
+        
         op = PackageCrHeads()
         op(head=matches[0].strip())
-        return op    
+        return op
 
-    def _extract_module_ops(self, *args, **kwargs ) -> List:
+    def _extract_module_ops(self, *args, **kwargs) -> list:
         """Extracts all module-level operations from the source text."""
         ops = []
         for head, body in re.compile(sts.unit_header_regex, re.DOTALL).findall(self.source_text):
@@ -74,7 +78,7 @@ class CSTDelta(CSTParserBase):
             ops.append((validated_op, body_node))
         return self.V._validate_ops(ops, *args, **kwargs)
 
-    def _parse_body(self, code: str) -> Optional[cst.CSTNode]:
+    def _parse_body(self, code: str) -> cst.CSTNode | None:
         code = textwrap.dedent(code.replace("\u00a0", " ")).strip()
         try:
             return cst.parse_module(code).body[0]
@@ -84,17 +88,18 @@ class CSTDelta(CSTParserBase):
 
 class Validations:
 
-    def _validate_op(self, op:UnitCrHeads, head:str, node:cst.CSTNode, *args, **kwargs) -> UnitCrHeads:
+    def _validate_op(self, op: UnitCrHeads, head: str, node: cst.CSTNode, *args, **kwargs) -> UnitCrHeads:
         """Tries to create and validate an UnitCrHeads object. Halts on failure."""
         try:
-            req_targets = {OP_M.IB, OP_M.IA, OP_M.RP, OP_M.RM}
-            req_nodes = {OP_M.IB, OP_M.IA, OP_M.RP}
+            # Use string constants from headers.py/CR_OPS
+            req_targets = CR_OPS
+            req_nodes = tuple(op for op in CR_OPS if op != 'remove') # insert_before, insert_after, replace
 
-            if op.cr_op in req_targets and op.cr_type != CRTypes.IMPORT and not op.cr_anc:
-                raise ValueError(f"Op '{op.cr_op.value}' requires a 'target'.")
+            if op.cr_op in req_targets and op.cr_type != "import" and not op.cr_anc:
+                raise ValueError(f"Op '{op.cr_op}' requires a 'cr_anc'.")
             if op.cr_op in req_nodes and node is None:
-                raise ValueError(f"Op '{op.cr_op.value}' requires a code block.")
-            if op.cr_op == OP_M.RM and node is not None:
+                raise ValueError(f"Op '{op.cr_op}' requires a code block.")
+            if op.cr_op == "remove" and node is not None:
                 raise ValueError("Op 'remove' must not have a code block.")
             return op
         except (ValueError, AttributeError) as e:
@@ -103,10 +108,10 @@ class Validations:
                 f"Invalid cr_op header or body: '{head}'\n"
                 f"{e}\n"
                 f"Halting execution."
-                )
+            )
             exit(1)
 
-    def _validate_ops(self, ops: list, *args, api, verbose: int = 0, **kwargs):
+    def _validate_ops(self, ops: list, *args, api, verbose: int = 0, **kwargs) -> list:
         if not ops and api != 'create':
             print(  f"{Fore.RED}parsers.Validations._validate_ops Error: "
                     f"No valid operations found in ops_file!{Fore.RESET}")

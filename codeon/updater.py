@@ -3,16 +3,23 @@ import os, shutil
 from colorama import Fore, Style
 
 import codeon.contracts as contracts
-from codeon.helpers.cr_info import CrData
+from codeon.cr_info import CrData
 
-from codeon.headers import OP_P
-from codeon.creator import JsonEngine, IntegrationEngine, ProcessEngine
+from codeon.headers import CR_OPS_PG
+from codeon.creator import JsonEngine, IntegrationEngine, ProcessEngine, PromptEngine
 import codeon.settings as sts
 import codeon.helpers.printing as printing
 
 
+
 class Updater:
     """Orchestrates the create and update refactoring processes."""
+    default_up_to_phase:str = 'cr_processing'
+    default_entry_phase:str = 'cr_json'
+    # PromptEngine to be implemented
+    engines = (PromptEngine, JsonEngine, IntegrationEngine, ProcessEngine)
+    phases = dict(zip(sts.phases, engines))
+    phase_enum = {p:i for i,p in enumerate(sts.phases)}
 
     def __init__(self, *args, api: str, **kwargs):
         self.api = api
@@ -20,46 +27,34 @@ class Updater:
         self.cr_data: CrData = None
         self.cr_fields = lambda kwargs: {k: v for k, v in kwargs.items() if k in CrData.__dataclass_fields__}
 
-
-    def __call__(self, *args, verbose:int=0, **kwargs) -> dict | None:
-        """Main execution flow for both 'create' and 'update' APIs."""
-        kwargs = self.update_params(*args, **kwargs)
-        self.run(*args, **kwargs)
+    def __call__(self, *args, entry_phase:str=None, up_to_phase:str=None, verbose:int=0, 
+        **kwargs) -> dict:
+        """
+        Main loop to run the update phases sequentially as defined in cls.phases. 
+        """
+        up_to_phase = up_to_phase if up_to_phase is not None else self.default_up_to_phase
+        entry_phase = entry_phase if entry_phase is not None else self.default_entry_phase
+        kwargs = self.update_params(*args, up_to_phase=up_to_phase, entry_phase=entry_phase, **kwargs)
+        for i, (phase, engine) in enumerate(self.phases.items()):
+            printing.pretty_dict(f"{i}: Updater.{phase}", kwargs)
+            if self.phase_enum[entry_phase] <= i <= self.phase_enum[up_to_phase]:
+                if verbose:
+                    print(  f"{Fore.MAGENTA}{i}: # Updater.__call__: Running phase '{phase}' "
+                            f"with engine '{engine.__name__}'...{Fore.RESET}")
+                if engine:
+                    kwargs.update(self.cr_phase(phase, engine, *args, **kwargs))
         return self.cr_data.to_dict()
 
-    def run(self, *args, current_phase:str, **kwargs) -> dict | None:
-        # skp phases before current_phase currently not implemented
-        kwargs.update(self.cr_json(*args, **kwargs))
-        kwargs.update(self.cr_integration(*args, **kwargs))
-        kwargs.update(self.cr_processing(*args, **kwargs))
-
-    def cr_json(self, *args, json_string:str=None, **kwargs) -> dict | None:
+    def cr_phase(self, phase, engine, *args, **kwargs) -> dict | None:
         # 1. Use JsonEngine to parse and validate the model output
-        je = JsonEngine(*args, json_string=json_string, **kwargs)(*args, **kwargs)
-        if je.cr_json_file_exists == (False or None):
+        eng = engine(*args, **kwargs)(*args, **kwargs)
+        if eng.cr_file_exists == (False or None):
             return {'status': 'JSON parsing failed or was empty. No json file saved.'}
-        elif je.cr_json_file_exists == sts.file_exists_default:
-            return self.update_params(je.__dict__, *args, **kwargs)
-        else:
-            return {}
-        
-    def cr_integration(self, *args, **kwargs) -> dict | None:
-        # 2. Use IntegrationEngine to clean and stage the file
-        ie = IntegrationEngine(*args, **kwargs)(*args, **kwargs)
-        if ie.cr_integration_file_exists == (False or None):
-            return {'status': 'Integration creation failed. No integration file saved.'}
-        elif ie.cr_integration_file_exists == sts.file_exists_default:
-            return self.update_params(ie.__dict__, *args, **kwargs)
-        else:
-            return {}
-        
-    def cr_processing(self, *args, **kwargs) -> dict | None:
-        # 3. Process the change request
-        pe = ProcessEngine(*args, **kwargs)(*args, **kwargs)
-        if pe.cr_processing_file_exists == (False or None):
-            return {'status': 'Processing failed. No staging file saved.'}
-        elif pe.cr_processing_file_exists == sts.file_exists_default:
-            return self.update_params(pe.__dict__, *args, **kwargs)
+        elif eng.cr_file_exists == sts.file_exists_default:
+            # generic engine variables must be mapped to phase specific names
+            kwargs[f"{phase}_path"] = eng.cr_path
+            kwargs[f"{phase}_file_exists"] = eng.cr_file_exists
+            return self.update_params(eng.__dict__, *args, **kwargs)
         else:
             return {}
 

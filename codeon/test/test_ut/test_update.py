@@ -52,9 +52,9 @@ class Test__update(unittest.TestCase):
         """Tests the 'happy path' where the transformation is successful."""
 
         out = codeon.apis.update.main(  
-                                        json_string=self.json_string_content, cr_id="8888-88-88-88-88-88",
+                                        # json_string=self.json_string_content, cr_id="8888-88-88-88-88-88",
                                         # source_path="cr_9999-99-99-99-99-99_codeon.py",
-                                        # source_path=self.test_file_name.replace("cr_", ""), 
+                                        source_path=self.test_file_name.replace("cr_", ""), 
                                             black=True, 
                                             api='update',
                                             hard=False, 

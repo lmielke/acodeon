@@ -94,7 +94,7 @@ class CR_OBJ_FIELDS:
     CR_ANC: str = 'cr_anc'
     INSTALL: str = 'install'
 
-class OP_M(str, Enum):
+class CR_OPS(str, Enum):
     IB, IA, RP, RM = 'insert_before', 'insert_after', 'replace', 'remove'
 
 class CRTypes(str, Enum):
@@ -107,7 +107,7 @@ class CrHeads:
         for _, v in asdict(CR_OBJ_FIELDS()).items():
             setattr(self, v, None)
         self.start_token, self.end_token = '#-- ', ' --#'
-        self._enum_map = {'cr_op': OP_M, 'cr_type': CRTypes}
+        self._enum_map = {'cr_op': CR_OPS, 'cr_type': CRTypes}
 
     def load_string(self, *args, head: str, **kwargs):
         s = head[len(self.start_token):-len(self.end_token)].strip()

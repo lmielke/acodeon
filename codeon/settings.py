@@ -16,8 +16,12 @@ test_cr_ids = {"9999-99-99-99-99-99", "8888-88-88-88-88-88"}
 
 time_stamp = lambda: dt.now().strftime("%Y-%m-%d-%H-%M-%S")
 session_time_stamp = time_stamp()
-cr_id_regex = r"cr_(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})_"
+time_stamp_regex = r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}"
+cr_id_regex = rf"cr_({time_stamp_regex})_"
 to_dt = lambda ts: dt.strptime(ts, "%Y-%m-%d-%H-%M-%S")
+# match to dict cr_id, file_name, file_ext from a file-name like cr_2024-01-31-12-30-45_example.py
+file_regex = rf"(?P<name>.+?)(?P<ext>\.\w+)$"
+cr_file_regex = rf"cr_(?P<cr_id>{time_stamp_regex})_(?P<file_name>{file_regex})"
 
 ignore_dirs = {
     ".git",
@@ -29,6 +33,7 @@ ignore_dirs = {
     "__pycache__",
     ".pytest_cache",
     ".tox",
+    "helpers",
 }
 abrev_dirs = {
     "log",
@@ -85,9 +90,9 @@ integration_formats = {
     'json': '__cr_integration_json__',
 }
 
-phases = ('cr_json', 'cr_integration', 'cr_processing')# cr_finalizing
+phases = ('cr_prompt', 'cr_json', 'cr_integration', 'cr_processing')# cr_finalizing
 
-cr_integration_file_templ_path = os.path.join(resources_dir, 'cr_integration_file_template.py')
+cr_integration_file_templ_path = os.path.join(resources_dir, 'cr_integration_file_template.md')
 cq_ex_llm_file = os.path.join(resources_dir, 'CQ-EX-LLM.md')
 temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
 # do not change order here

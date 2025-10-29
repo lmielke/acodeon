@@ -1,107 +1,84 @@
 # C:\Users\lars\python_venvs\packages\acodeon\codeon\transformer.py
 
 import libcst as cst
-from typing import List, Tuple, Optional, Set
 from colorama import Fore, Style
-from codeon.headers import CrHeads, OP_M, CRTypes
+from codeon.headers import CrHeads, CR_OPS, CR_TYPES
 
 
 class ClassTransformer:
-    def __init__(
-        self,
-        *args,
-        in_node: cst.ClassDef,
-        cr_ops: List[Tuple[CrHeads, Optional[cst.CSTNode]]],
-        cr_id: str,
-        **kwargs,
-    ):
-        self.in_node = in_node
-        self.cr_ops = cr_ops
-        self.cr_id = cr_id
-        # Start new_body as a mutable list of original statements
+    def __init__(self, *args, in_node, cr_ops, cr_id, **kwargs):
+        self.in_node: cst.ClassDef = in_node
+        self.cr_ops: list[tuple[CrHeads, cst.CSTNode | None]] = cr_ops
+        self.cr_id: str = cr_id
         self.new_body: list[cst.BaseStatement] = list(in_node.body.body)
-        # Track applied ops to prevent re-applying a replace
-        self.applied_ops: Set[str] = set()
+        self.applied_ops: set[str] = set()
 
     def transform(self, *args, **kwargs) -> cst.ClassDef:
         pending_ops = list(self.cr_ops)
-
-        # Loop until no new operations can be applied in a full pass
         while True:
             ops_applied_this_pass = 0
             remaining_ops = []
-
-            for op, node in pending_ops:
-                if self._try_apply_op(*args, op=op, node=node, **kwargs):
+            for head, node in pending_ops:
+                if self._try_apply_op(*args, head=head, node=node, **kwargs):
                     ops_applied_this_pass += 1
                 else:
-                    remaining_ops.append((op, node))
-
+                    remaining_ops.append((head, node))
             if ops_applied_this_pass == 0 or not remaining_ops:
                 break  # No progress or all ops are done
             pending_ops = remaining_ops
-
         if remaining_ops:
             print(
                 f"{Fore.YELLOW}Warning: Could not apply all class operations. "
                 f"Missing anchors for: "
-                f"{[op.cr_anc for op, _ in remaining_ops]}{Style.RESET_ALL}"
+                f"{[head.cr_anc for head, _ in remaining_ops]}{Style.RESET_ALL}"
             )
-
         return self.in_node.with_changes(
             body=self.in_node.body.with_changes(body=tuple(self.new_body))
         )
 
-    def _find_anchor_index(self, *args, anchor_name: str, **kwargs) -> int:
+    def _find_anchor_index(self, anc_name: str, *args, **kwargs) -> int:
         """Finds a method/node by name in the *current* self.new_body."""
         for i, stmt in enumerate(self.new_body):
-            if (
-                isinstance(stmt, (cst.FunctionDef, cst.ClassDef))
-                and stmt.name.value == anchor_name
-            ):
+            if (isinstance(stmt, (cst.FunctionDef, cst.ClassDef)) and stmt.name.value == anc_name):
                 return i
         return -1
 
-    def _create_marker_node(self, *args, op: CrHeads, **kwargs) -> cst.EmptyLine:
+    def _create_marker_node(self, *args, head: CrHeads, **kwargs) -> cst.EmptyLine:
         """Creates a new marker node."""
-        marker_text = op.create_marker(cr_id=self.cr_id)
-        # Add empty line before marker for non-import/decorator ops
-        if op.cr_type not in {CRTypes.IMPORT}:
+        marker_text = head.create_marker(cr_id=self.cr_id)
+        if head.cr_type not in {"import"}:
             return cst.EmptyLine(comment=cst.Comment(marker_text))
         return cst.EmptyLine(comment=cst.Comment(marker_text))
 
-    def _try_apply_op(self, *args, op: CrHeads, node: Optional[cst.CSTNode], **kwargs) -> bool:
-        """
-        Attempts to apply a single operation to self.new_body.
-        Returns True on success, False if anchor is not found.
-        """
-        if op.cr_op == OP_M.RP and op.cr_anc in self.applied_ops:
+    def _try_apply_op(self, *args, head: CrHeads, node: cst.CSTNode | None, **kwargs) -> bool:
+        """ Attempts to apply a single operation to self.new_body. """
+        if head.cr_op == "replace" and head.cr_anc in self.applied_ops:
             return True  # Op already applied (e.g., a prior replace)
-        idx = self._find_anchor_index(*args, anchor_name=op.cr_anc, **kwargs)
+        idx = self._find_anchor_index(head.cr_anc, *args, **kwargs)
         if idx == -1:
             return False  # Anchor not found, defer this operation
-        marker = self._create_marker_node(*args, op=op, **kwargs)
+        marker = self._create_marker_node(*args, head=head, **kwargs)
         nodes_to_add = []
-        # Add the single required blank line before a method operation (PEP 8)
-        if op.cr_type == CRTypes.METHOD:
+        if head.cr_type == "method":
             nodes_to_add.extend([cst.EmptyLine()])
-        if op.cr_op == OP_M.IB:
+        # insert nodes based on operation type
+        if head.cr_op == "insert_before":
             nodes_to_add.append(marker)
             if node:
                 nodes_to_add.append(node)
             self.new_body[idx:idx] = nodes_to_add
-        elif op.cr_op == OP_M.IA:
+        elif head.cr_op == "insert_after":
             nodes_to_add.append(marker)
             if node:
                 nodes_to_add.append(node)
             self.new_body[idx + 1 : idx + 1] = nodes_to_add
-        elif op.cr_op == OP_M.RP:
+        elif head.cr_op == "replace":
             nodes_to_add.append(marker)
             if node:
                 nodes_to_add.append(node)
             self.new_body[idx : idx + 1] = nodes_to_add
-            self.applied_ops.add(op.cr_anc)  # Mark as replaced
-        elif op.cr_op == OP_M.RM:
+            self.applied_ops.add(head.cr_anc)
+        elif head.cr_op == "remove":
             nodes_to_add.append(marker)
             self.new_body[idx : idx + 1] = nodes_to_add
         return True
@@ -113,36 +90,36 @@ class ApplyChangesTransformer(cst.CSTTransformer):
     This transformer handles module-level changes (imports) and class-level
     changes (methods).
     """
+    import_nodes = {"insert_after", "insert_before"}
 
-    import_nodes = {OP_M.IA, OP_M.IB}
-
-    def __init__(self, source, ops, *args, cr_id, **kwargs):
+    def __init__(self, source, ops: list[tuple], *args, cr_id: str, **kwargs):
         self.source: list = source
-        self.ops: List[Tuple[CrHeads, Optional[cst.CSTNode]]] = ops
+        self.ops = ops
         self.cr_id: str = cr_id
 
-    def _create_marker_node(self, op: CrHeads, *args, **kwargs) -> cst.EmptyLine:
-        marker_text = op.create_marker(cr_id=self.cr_id)
+    def _create_marker_node(self, head: CrHeads, *args, **kwargs) -> cst.EmptyLine:
+        marker_text = head.create_marker(cr_id=self.cr_id)
         return cst.EmptyLine(comment=cst.Comment(marker_text))
 
-    def _apply_op(self, op: CrHeads, node: cst.CSTNode, target_index: int, new_body: list):
-        marker_node = self._create_marker_node(op)
-        if op.cr_op == OP_M.RM:
-            new_body[target_index : target_index + 1] = [marker_node]
+    def _apply_op(self, head: CrHeads, node: cst.CSTNode, tgt_idx: int, new_body: list) -> None:
+        marker_node = self._create_marker_node(head)
+        if head.cr_op == "remove":
+            new_body[tgt_idx : tgt_idx + 1] = [marker_node]
             return
         if not node:
             return
         nodes_to_add = []
-        if op.cr_type in {CRTypes.CLASS, CRTypes.FUNCTION}:
+        if head.cr_type in {"class", "function"}:
             nodes_to_add.extend([cst.EmptyLine(), cst.EmptyLine()])
         nodes_to_add.append(marker_node)
         nodes_to_add.append(node)
-        if op.cr_op == OP_M.RP:
-            new_body[target_index : target_index + 1] = nodes_to_add
-        elif op.cr_op == OP_M.IA:
-            new_body[target_index + 1 : target_index + 1] = nodes_to_add
-        elif op.cr_op == OP_M.IB:
-            new_body[target_index:target_index] = nodes_to_add
+        
+        if head.cr_op == "replace":
+            new_body[tgt_idx : tgt_idx + 1] = nodes_to_add
+        elif head.cr_op == "insert_after":
+            new_body[tgt_idx + 1 : tgt_idx + 1] = nodes_to_add
+        elif head.cr_op == "insert_before":
+            new_body[tgt_idx:tgt_idx] = nodes_to_add
 
     def _get_insertion_index(self, *args, body: list, **kwargs) -> int:
         """Find the best index for a non-targeted import (unwrap SimpleStatementLine)."""
@@ -179,40 +156,31 @@ class ApplyChangesTransformer(cst.CSTTransformer):
                 return i
         return -1
 
-    def _process_module_operation(
-        self, op: CrHeads, node: Optional[cst.CSTNode], new_body: list, *args, **kwargs
-    ):
+    def _module_ops(self, head:CrHeads, node:cst.CSTNode, new_body:list, *args, **kwargs) -> None:
         """Find target and apply op; fallback insert for untargeted imports."""
-        ti = self._find_target_index(op.cr_anc, new_body) if op.cr_anc else -1
+        ti = self._find_target_index(head.cr_anc, new_body) if head.cr_anc else -1
         if ti != -1:
-            self._apply_op(op, node, ti, new_body)
-        elif node and op.cr_type == CRTypes.IMPORT and op.cr_op in self.import_nodes:
+            self._apply_op(head, node, ti, new_body)
+        elif node and head.cr_type == "import" and head.cr_op in self.import_nodes:
             idx = self._get_insertion_index(*args, body=new_body, **kwargs)
             new_body.insert(idx, node)
 
     def leave_Module(self, in_node: cst.Module, out_node: cst.Module) -> cst.Module:
-        module_level_ops = {CRTypes.IMPORT, CRTypes.CLASS, CRTypes.FUNCTION}
-        m_ops = [(op, node) for op, node in self.ops if op.cr_type in module_level_ops]
+        module_level_types = {"import", "class", "function"}
+        m_ops = [(head, node) for head, node in self.ops if head.cr_type in module_level_types]
         if not m_ops:
             return out_node
         new_body = list(out_node.body)
         # Note: Module-level ops do not yet support chaining.
         # They are applied in reverse to maintain indices.
-        for op, node in reversed(m_ops):
-            self._process_module_operation(op, node, new_body)
+        for head, node in reversed(m_ops):
+            self._module_ops(head, node, new_body)
         return out_node.with_changes(body=tuple(new_body))
 
-    def leave_ClassDef(
-        self, in_node: cst.ClassDef, out_node: cst.ClassDef
-    ) -> cst.CSTNode:
-        cr_ops = [
-            (op, node)
-            for op, node in self.ops
-            if op.cr_type == CRTypes.METHOD and op.class_name == in_node.name.value
-        ]
+    def leave_ClassDef(self, in_node: cst.ClassDef, out_node: cst.ClassDef) -> cst.CSTNode:
+        cr_ops = [(head, node) for head, node in self.ops
+            if head.cr_type == "method" and head.class_name == in_node.name.value ]
         if not cr_ops:
             return out_node
         # Pass the original in_node, not the out_node, to the transformer
-        return ClassTransformer(
-            in_node=in_node, cr_ops=cr_ops, cr_id=self.cr_id
-        ).transform()
+        return ClassTransformer(in_node=in_node, cr_ops=cr_ops, cr_id=self.cr_id).transform()

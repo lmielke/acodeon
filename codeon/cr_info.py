@@ -1,4 +1,4 @@
-# C:\Users\lars\python_venvs\packages\acodeon\codeon\helpers\file_info.py
+# C:\Users\lars\python_venvs\packages\acodeon\codeon\cr_info.py
 
 import os, re, shutil, yaml
 from dataclasses import dataclass, field, asdict
@@ -24,22 +24,26 @@ class CrData:
     api: str = "create" # package cr_op from provided api (mandatory)
     cr_id: str | None = None
     pg_op: str | None = None # package cr_op from cr-header in file (mandatory)
-    current_phase: str = "inital" # current phase of the cr process
-    entry_phase: str | None = "inital" # can be other phase, i.e. cr_json, cr_integration
+    current_phase: str | None = None # current phase of the cr process
+    entry_phase: str | None = None # can be other phase, i.e. cr_json, cr_integration
+    up_to_phase: str = sts.phases[-1] # phase to process up to
+    cr_entry_source: str | None = None
     json_string: str | None = None
+    cr_integration_string: str | None = None
+    cr_prompt: str | None = None
     # --- Derived Paths ---
     work_file_name: str | None = None
     cr_prompt_path: str | None = None
-    cr_json_path: str | None = None
-    cr_integration_path: str | None = None
-    cr_processing_path: str | None = None
-    cr_restore_path: str | None = None
-    temp_dir: str | None = None
     cr_prompt_file_exists: bool = False
+    cr_json_path: str | None = None
     cr_json_file_exists: bool = False
+    cr_integration_path: str | None = None
     cr_integration_file_exists: bool = False
+    cr_processing_path: str | None = None
     cr_processing_file_exists: bool = False
+    cr_restore_path: str | None = None
     cr_restore_file_exists: bool = False
+    temp_dir: str | None = None
     cr_implemented: bool = False
     cr_log_path: str | None = None
 
@@ -53,39 +57,6 @@ class CrData:
         self.mk_cr_dirs(*args, **kwargs)
         self.load_cr_info(*args, **kwargs)
         # print(f"{Fore.MAGENTA}CrData.__post_init__ out :{Fore.RESET} {self.pg_name = }")
-
-    def get_current_phase(self, *args, **kwargs) -> str:
-        for phase in sts.phases:
-            par_name = f"{phase}_file_exists"
-            if getattr(self, par_name):
-                if self.entry_phase == 'inital':
-                    # the first confirmed (provided) object defines the entry phase
-                    self.entry_phase = phase
-                self.current_phase = phase
-
-    def mk_cr_dirs(self, *args, **kwargs) -> None:
-        """Creates the log and change-request directories based on package name."""
-        for n, (_d, _n) in sts.cr_paths.items():
-            _dir = _d(self.pg_name)
-            if not os.path.isdir(_dir):
-                print(f"{Fore.MAGENTA}CrData.mk_cr_dirs:{Fore.RESET} Creating dir: {_dir = }")
-                os.makedirs(_dir, exist_ok=True)
-
-    def load_cr_info(self, *args, verbose:int=0, **kwargs):
-        if not self.cr_log_path:
-            return
-        else:
-            self.cr_log_file_exists = True
-            with open(self.cr_log_path, 'r') as f:
-                cr_info = yaml.safe_load(f)
-        self.update_data(*args, **cr_info)
-
-    def log_cr_info(self, *args, verbose:int=0, **kwargs):
-        if not self.cr_log_path:
-            return
-        else:
-            with open(self.cr_log_path, 'w') as f: f.write(yaml.dump(self.to_dict()))
-            self.cr_log_file_exists = True
 
     def get_cr_id(self, *args, cr_id:str=sts.time_stamp(), **kwargs) -> str:
         # when the cr_id is provided as part of a file path, we extract it
@@ -113,6 +84,46 @@ class CrData:
                 print(f"{Fore.YELLOW}file_info.get_cr_id Warning: {cr_id = } is not "
                             f"a valid datetime!")
         self.cr_id = cr_id
+
+    def get_entry_phase(self, *args, **kwargs) -> str:
+        # if entry_phase is provided we start from there
+        if self.current_phase is None and self.entry_phase is not None:
+            self.current_phase = self.entry_phase
+            return self.current_phase
+        # otherwise we check which outputs already exist to determine the entry_phase
+        for i, phase in enumerate(sts.phases):
+            # print(f"{Fore.MAGENTA}CrData.get_entry_phase:{Fore.RESET} Checking {phase = }")
+            par_name = f"{phase}_file_exists"
+            if getattr(self, par_name):
+                if self.entry_phase is None:
+                    # the first confirmed (provided) object defines the entry phase
+                    self.entry_phase = phase
+                self.current_phase = phase
+        return self.current_phase
+
+    def mk_cr_dirs(self, *args, **kwargs) -> None:
+        """Creates the log and change-request directories based on package name."""
+        for n, (_d, _n) in sts.cr_paths.items():
+            _dir = _d(self.pg_name)
+            if not os.path.isdir(_dir):
+                print(f"{Fore.MAGENTA}CrData.mk_cr_dirs:{Fore.RESET} Creating dir: {_dir = }")
+                os.makedirs(_dir, exist_ok=True)
+
+    def load_cr_info(self, *args, verbose:int=0, **kwargs):
+        if not self.cr_log_path:
+            return
+        else:
+            self.cr_log_file_exists = True
+            with open(self.cr_log_path, 'r') as f:
+                cr_info = yaml.safe_load(f)
+        self.update_data(*args, **cr_info)
+
+    def log_cr_info(self, *args, verbose:int=0, **kwargs):
+        if not self.cr_log_path:
+            return
+        else:
+            with open(self.cr_log_path, 'w') as f: f.write(yaml.dump(self.to_dict()))
+            self.cr_log_file_exists = True
 
     def create_cr_paths(self, *args, work_file_name:str=None, source_path:str=None, pg_name:str=None, **kwargs):
         # printing.pretty_dict('CrData.create_cr_paths \tin', self.to_dict(), color=Fore.CYAN)
@@ -223,11 +234,10 @@ class CrData:
                 setattr(self, k, v)
         self.create_cr_paths(*args, **kwargs)
         self.create_cr_paths(*args, **kwargs)
-        self.get_current_phase(*args, **kwargs)
+        self.get_entry_phase(*args, **kwargs)
         self.validate_cr(*args, **kwargs)
         self.log_cr_info(*args, **kwargs)
         return self.to_dict()
-
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -243,7 +253,7 @@ class CrData:
             exit(1)
         # if current_phase is inital then a json_string or intgetration_string must be provided
         # currently only json_string is implemented (might come both in code_string)
-        if self.current_phase == 'inital' and not self.json_string:
+        if self.current_phase == 'inital' and not self.json_string and not self.cr_prompt:
             print(  f"{Fore.RED}CrData.validate_cr ERROR: {self.current_phase = } --> "
                     f"json_string or cr_..._path must be provided!{Style.RESET_ALL}")
             exit(1)
