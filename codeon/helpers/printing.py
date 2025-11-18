@@ -1,5 +1,5 @@
 """
-hlp_printing.py
+printing.py
 """
 import os, re, time
 from datetime import datetime as dt
@@ -30,7 +30,8 @@ def wrap_text(text:str, *args, max_chars:int=sts.table_max_chars, **kwargs):
 def pretty_prompt(prompt:str, *args, verbose:int=0, **kwargs) -> str:
     prompt = re.sub(r'<user_comment>\s*</user_comment>', '', prompt, flags=re.MULTILINE)
     prompt = strip_ansi_codes(prompt)
-        # we replace the <tags> in prompt with colorized tags
+    prompt = clean_pipe_text(prompt)
+    # we replace the <tags> in prompt with colorized tags
     p = (
             prompt.replace('deliverable>', f"{Back.MAGENTA}deliverable{Style.RESET_ALL}>")
                 .replace('rag_db_matches>', f"{Back.GREEN}rag_db_matches{Style.RESET_ALL}>")
@@ -46,7 +47,7 @@ def pretty_prompt(prompt:str, *args, verbose:int=0, **kwargs) -> str:
                 .replace('Strategy Prompt', f"{Fore.YELLOW}Strategy Prompt{Style.RESET_ALL}")
         )
     # we color markdown headers level 1 and 2 ('# Some Text' and '## Some Text') with BLUE
-    p = re.sub(r'^# (.+)$', f"{Fore.BLUE}# \\1{Fore.RESET}", p, flags=re.MULTILINE)
+    p = re.sub(r'^# ([A-Z1-9].+)$', f"{Back.BLUE}# \\1{Style.RESET_ALL}", p, flags=re.MULTILINE)
     p = re.sub(r'^## (.+)$', f"{Fore.BLUE}## \\1{Fore.RESET}", p, flags=re.MULTILINE)
     p = re.sub(r'^.?```(\w+)?$', f"{Fore.MAGENTA}``` \\1{Fore.RESET}", p, flags=re.MULTILINE)
     p = re.sub(r'(.*)(https?://[^\s\'_\"]+)(.*)', f"\\1{Fore.MAGENTA}\\2{Fore.RESET}\\3", p)
@@ -221,7 +222,10 @@ def strip_ansi_codes(text: str) -> str:
         str: Text with ANSI codes removed.
     """
     ansi_escape = re.compile(r'\x1b\[([0-9]+)(;[0-9]+)*m')
-    return ansi_escape.sub('', text)
+    cleaned = ansi_escape.sub('', text)
+    # we remove windows artefacts such as \r
+    cleaned = cleaned.replace('\r', '').replace('\\n', '\n')
+    return cleaned
 
 def clean_pipe_text(text: str) -> str:
     """WHY: Keep Unicode intact; unescape \n/\t; strip ANSI; fix cp1252-mojibake."""
@@ -234,3 +238,94 @@ def clean_pipe_text(text: str) -> str:
         try: t = t.encode('latin-1').decode('utf-8')
         except Exception: pass
     return t
+
+# logging and printing
+import inspect, logging
+from enum import Enum
+from colorama import Fore, Style
+
+# ── logger setup ────────────────────────────────────────────────
+event_logger = logging.getLogger("event_logger")
+event_logger.setLevel(logging.INFO)
+event_logger.propagate = False
+if not event_logger.handlers:
+    event_logger.addHandler(logging.NullHandler())
+
+
+# ── color enums & mappings ──────────────────────────────────────
+class Color(Enum):
+    RED = Fore.RED
+    YELLOW = Fore.YELLOW
+    GREEN = Fore.GREEN
+    BLUE = Fore.BLUE
+    MAGENTA = Fore.MAGENTA
+    CYAN = Fore.CYAN
+    RESET = Fore.RESET
+
+
+LEVEL_COLORS = dict(
+    error=Color.RED,
+    warning=Color.YELLOW,
+    info=Color.GREEN,
+    debug=Color.RED,
+    dev=Color.YELLOW,
+)
+
+MODULE_COLORS: dict[str, Color] = {}
+
+
+# ── internals ───────────────────────────────────────────────────
+def _caller_info() -> tuple[str, str, str]:
+    f = inspect.currentframe().f_back.f_back
+    cls = f.f_locals.get("self")
+    mod = f.f_globals.get("__name__", "")
+    return mod, (cls.__class__.__name__ if cls else ""), f.f_code.co_name
+
+
+def _ready_logger(*args, p: str | None, **kwargs) -> None:
+    """Attach file handler only once *_error.log is ready."""
+    if not (isinstance(p, str) and p.endswith("_error.log")):
+        return
+    if any(not isinstance(h, logging.NullHandler) for h in event_logger.handlers):
+        return
+    import os
+    os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+    h = logging.FileHandler(p, encoding="utf-8")
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    event_logger.addHandler(h)
+
+
+# ── public API ──────────────────────────────────────────────────
+def logprint(msg: str, *, level: str = None, print_to_console: bool = True, **kwargs) -> str:
+    """
+    Only WARNING and ERROR are logged.
+    INFO/DEBUG remain console-only.
+    """
+    try:
+        _ready_logger(p=getattr(sts, "error_path", None))
+    except Exception:
+        pass
+
+    p_level = "" if level is None else level.lower()
+    level = "info" if level is None else level.lower()
+
+    mod, cls, func = _caller_info()
+    mod = mod.split(".")[-1]
+    origin = f"{mod}.{cls + '.' if cls else ''}{func} {p_level.upper()}"
+
+    style = Style.BRIGHT if p_level in {"debug", "dev"} else Style.NORMAL if p_level else Style.DIM
+    color = (
+        LEVEL_COLORS[level]
+        if level in ("error", "warning", "debug", "dev")
+        else MODULE_COLORS.get(mod, LEVEL_COLORS["info"])
+    )
+
+    # log only warnings and errors
+    if level in ("warning", "error"):
+        getattr(event_logger, level, event_logger.warning)(f"{origin}:\n{msg}\n")
+
+    # always print
+    if print_to_console:
+        print(f"\n{color.value}{style}{origin}:\n{Fore.RESET}{msg}{Style.RESET_ALL}\n")
+
+    return msg

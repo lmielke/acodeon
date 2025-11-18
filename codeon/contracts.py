@@ -15,7 +15,7 @@ def checks(*args, **kwargs):
     kwargs.update(get_package_data(*args, **kwargs))
     kwargs.update(clean_paths(*args, **kwargs))
     check_env_vars(*args, **kwargs)
-    kwargs.update(get_cr_deliverable(*args, **kwargs))
+    kwargs.update(get_deliverable(*args, **kwargs))
     kwargs_fmt(*args, **kwargs)
     return kwargs
 
@@ -93,9 +93,9 @@ def normalize_path(path: str, *args, **kwargs) -> str:
             p = os.path.abspath(os.path.join(os.getcwd(), p))
     return os.path.normpath(p)
 
-def get_cr_deliverable(*args, integration_format:str='md', **kwargs):
+def get_deliverable(*args, integration_format:str='md', **kwargs):
     deliverable = sts.integration_formats.get(integration_format)
-    return {'cr_deliverable': deliverable}
+    return {'deliverable': deliverable}
 
 
 def update_params(*args, **kwargs) -> dict:

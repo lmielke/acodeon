@@ -28,7 +28,7 @@ def mk_args():
     )
     parser.add_argument(
         "-p",
-        "--cr_prompt",
+        "--prompt_string",
         type=str,
         help="Prompt describing the change request (used with 'create', 'update')."
     )
@@ -48,7 +48,7 @@ def mk_args():
     )
     parser.add_argument(
         "-c",
-        "--cr_entry_source",
+        "--update_source",
         type=str,
         help="start object the CR data can be derrived from, can be string or path",
     )
@@ -58,7 +58,7 @@ def mk_args():
         type=str,
         default="md",
         choices=["json", "md"],
-        help="Format of the cr_integration_file (json or markdown). Default is markdown."
+        help="Format of the integration_file (json or markdown). Default is markdown."
     )
     parser.add_argument(
         "-j",

@@ -1,5 +1,5 @@
 # collections.py
-import json, os, pyttsx3, re, shutil, subprocess, sys, textwrap, time, yaml
+import ast, json, os, pyttsx3, re, shutil, subprocess, sys, textwrap, time, yaml
 from colorama import Fore, Style
 from contextlib import contextmanager
 from tabulate import tabulate as tb
@@ -252,3 +252,34 @@ def pipenv_is_active(exec_path, *args, **kwargs):
     is_active = os.path.basename(exec_path.split('Scripts')[0]\
                     .strip(os.sep)).startswith(sts.project_name)
     return is_active
+
+def match_file_info(text: str, *args, **kwargs):
+    if cr_match := re.compile(sts.cr_file_regex).search(str(text)):
+        return cr_match.groupdict()
+    if generic_match := re.compile(sts.file_name_regex[1:-1]).search(str(text)):
+        return {'cr_id': None, 'file_name': generic_match.group(0)}
+    return None
+
+def to_file_name(file_info:dict, *args, **kwargs) -> str:
+    """
+    takes a file_info dict and returns the corresponding file name
+    """
+    cr_id = file_info.get('cr_id')
+    file_name = file_info.get('file_name')
+    if cr_id:
+        return f'cr_{cr_id}_{file_name}'
+    elif file_name:
+        return file_name
+    return file_name
+
+def class_names_from_file(*args, source_path:str=None, cr_anc:str='tbd', **kwargs) -> list:
+    """
+    Parses a Python source file to extract class names defined within it.
+    """
+    if source_path is None:
+        return cr_anc
+    # parse source file for class names
+    with open(source_path, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=source_path)
+    ac = [n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+    return f"[{', '.join(ac)}]" if len(ac) >= 2 else ac[0] if len(ac) == 1 else 'Tbd'

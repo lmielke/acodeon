@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 
 import libcst as cst
 from colorama import Fore, Style
+from codeon.helpers.printing import logprint, Color, MODULE_COLORS
+MODULE_COLORS["parsers"] = Color.MAGENTA
 
 import codeon.settings as sts
 # Updated: Import constants and classes from headers
@@ -42,30 +44,26 @@ class CSTSource(CSTParserBase):
 
 class CSTDelta(CSTParserBase):
     """
-    Parses an cr_integration_file for an optional package-level operation
+    Parses an integration_file for an optional package-level operation
     and a list of executable module-level operations.
     """
 
     def parse(self, *args, **kwargs) -> tuple:
         """Parses both package and unit cr-headers from the source text."""
-        pg_op = self._extract_pg_op(*args, **kwargs)
+        pg_h = self._extract_pg_op(*args, **kwargs)
         module_ops = self._extract_module_ops(*args, **kwargs)
-        return pg_op, module_ops
+        return pg_h, module_ops
 
     def _extract_pg_op(self, *args, **kwargs) -> PackageCrHeads | None:
         """
         Finds and parses a single package cr-header, if present.
         NOTE: We are matching with re.findall but only using the first match.
         """
-        matches = re.compile(sts.pg_header_regex, re.MULTILINE).findall(self.source_text)
-        if len(matches) != 1:
-            # Must be exactly one package header. If not, return None/raise assert.
-            # Choosing to assert based on existing code structure
-            assert len(matches) == 1, "Expected exactly one package cr_op header in line 0."
-        
-        op = PackageCrHeads()
-        op(head=matches[0].strip())
-        return op
+        pg_headers = re.compile(sts.pg_header_regex, re.MULTILINE).findall(self.source_text)
+        assert len(pg_headers) == 1, logprint(f"{len(pg_headers) = } must be 1!", level='error')
+        pg_h = PackageCrHeads()
+        pg_h(head=pg_headers[0].strip())
+        return pg_h
 
     def _extract_module_ops(self, *args, **kwargs) -> list:
         """Extracts all module-level operations from the source text."""
@@ -74,7 +72,9 @@ class CSTDelta(CSTParserBase):
             body_node = self._parse_body(body)
             op = UnitCrHeads()
             op(head=head.strip())
-            validated_op = self.V._validate_op(op, head, body_node)
+            validated_op = self.V._validate_unit_header_op(op, head, body_node)
+            if validated_op == False:
+                continue
             ops.append((validated_op, body_node))
         return self.V._validate_ops(ops, *args, **kwargs)
 
@@ -88,28 +88,31 @@ class CSTDelta(CSTParserBase):
 
 class Validations:
 
-    def _validate_op(self, op: UnitCrHeads, head: str, node: cst.CSTNode, *args, **kwargs) -> UnitCrHeads:
-        """Tries to create and validate an UnitCrHeads object. Halts on failure."""
+    def _validate_unit_header_op(self, 
+        op: UnitCrHeads, 
+        head: str, 
+        node: cst.CSTNode | None, *args,
+        api: str = "update", 
+        **kwargs ) -> UnitCrHeads | bool:
+        """WHY: Be tolerant; skip ill-formed ops instead of fatal-halting."""
         try:
-            # Use string constants from headers.py/CR_OPS
             req_targets = CR_OPS
-            req_nodes = tuple(op for op in CR_OPS if op != 'remove') # insert_before, insert_after, replace
-
+            needs_node = tuple(o for o in CR_OPS if o != "remove")
             if op.cr_op in req_targets and op.cr_type != "import" and not op.cr_anc:
                 raise ValueError(f"Op '{op.cr_op}' requires a 'cr_anc'.")
-            if op.cr_op in req_nodes and node is None:
-                raise ValueError(f"Op '{op.cr_op}' requires a code block.")
+            if op.cr_op in needs_node and node is None:
+                logprint(f"'{op.cr_op}' needs code! Skipping:\n{head = }", level='warning')
+                return False
             if op.cr_op == "remove" and node is not None:
-                raise ValueError("Op 'remove' must not have a code block.")
+                logprint(f"'remove' must have no code; skipping:\n{head}", level='warning')
+                return False
             return op
         except (ValueError, AttributeError) as e:
             print(
-                f"{Fore.RED}FATAL ERROR in cr_integration_file:{Style.RESET_ALL}\n"
-                f"Invalid cr_op header or body: '{head}'\n"
-                f"{e}\n"
-                f"Halting execution."
+                f"{Fore.YELLOW}WARNING in integration_file:{Style.RESET_ALL}\n"
+                f"{e}\nHeader: {head}\nSkipping."
             )
-            exit(1)
+            return False
 
     def _validate_ops(self, ops: list, *args, api, verbose: int = 0, **kwargs) -> list:
         if not ops and api != 'create':

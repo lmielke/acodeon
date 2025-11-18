@@ -49,7 +49,7 @@ class TestParsers(unittest.TestCase):
 
     def test_cst_delta_initialization_and_parsing(self):
         """WHY: Ensure CSTDelta loads and parses operations correctly."""
-        parser = CSTDelta(cr_integration_path=self.cr_file)
+        parser = CSTDelta(integration_path=self.cr_file)
         self.assertIn(
             "#-- cr_op: remove, target: ThirdClass.method_to_remove", parser.source
         )

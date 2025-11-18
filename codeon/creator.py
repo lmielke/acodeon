@@ -1,283 +1,311 @@
 """
 """
-import ast, jinja2, os, re, json, requests, shutil, subprocess
+import jinja2, os, re, json, requests, shutil, subprocess
 import libcst as cst
 from colorama import Fore, Style
-import pyperclip as pc
+from codeon.helpers.printing import logprint, Color, MODULE_COLORS
+MODULE_COLORS["creator"] = Color.MAGENTA
 
 import codeon.settings as sts
-from codeon.transformer import ApplyChangesTransformer
+from codeon.transformer import Transformer
 from codeon.parsers import CSTSource, CSTDelta
 from codeon.helpers.string_parser import JsonParser, MdParser
 import codeon.helpers.printing as printing
+import codeon.helpers.collections as collections
 
 
-class JsonEngine:
+class SourceEngine:
     """
     Handles JSON payload for Change Requests (CRs).
     WHY: Delegates parsing to JsonParser and manages CR file creation/state.
     """
+    fields = ['string', 'data', 'update_source', 'update_source_type', 'file_exists', 
+                'pg_name', 'cr_id', 'cr_op', 'verbose', 'api', 'work_dir', 'work_file_name']
 
-    def __init__(self, *args, json_string: str, cr_json_path: bool = False, **kwargs):
-        self.json_string = json_string
-        self.data: dict | None = None # Simplified annotation
-        self.cr_path, self.cr_file_exists = cr_json_path, False
-        self.work_file_name = None
-        self.content = None
+    def __init__(self, phase, *args, path = False, **kwargs):
+        self._phase:str = phase
+        self.update_source_type:str = None
+        self.string:str = None
+        self.path:str = path
+        self.file_exists: bool = False
+        self.work_file_name:str = None
+        self.data: dict = None
+        self.handler = FileHandler(phase, *args, **kwargs)
+        self.prosessor = ProcessEngine(phase, *args, **kwargs)
 
-    def __call__(self, *args, json_string:str, **kwargs) -> "JsonEngine":
-        self.read_cr_file(*args, **kwargs)
-        if not self.json_string:
-            return self
-        self.data = JsonParser(*args, json_string=self.json_string, **kwargs)()
-        if not self.data:
-            return self
-        self.cr_path, self.work_file_name = self.get_path(*args, **kwargs)
-        self.write_json(*args, **kwargs)
-        self.content = self.data.get(sts.json_content)
-        return self
+    def __call__(self, *args, **kwargs) -> dict:
+        self.veryfy_source(*args, **kwargs)
+        printing.pretty_dict('SourceEngine.__dict__', self.__dict__)
+        self.parse_source(*args, **kwargs)
+        return self.processing(*args, **kwargs)
 
-    def read_cr_file(self, *args, **kwargs) -> None:
-        if not self.cr_path or not os.path.exists(str(self.cr_path)):
-            return
-        print(f"{Fore.MAGENTA}JsonEngine.__call__: JSON path already exists, "
-              f"skipping parsing, loading instead.{Fore.RESET}")
-        with open(self.cr_path, "r", encoding="utf-8") as f_json:
-            self.json_string = f_json.read()
+    def processing(self, *args, **kwargs) -> dict:
+        self.path = self.handler.get_path(self.work_file_name, *args, **kwargs)
+        logprint(f"{self._phase} path: {self.path}", level='dev')
+        if self.update_source_type == 'string':
+            self.handler.write_file(self.path, self.string)
+        if self._phase == 'processing':
+            self.prosessor(*args, **kwargs)
+        outputs  = {
+                    f'{self._phase}_path': self.path,
+                    f'{self._phase}_file_exists': self.file_exists,
+                    'work_file_name': self.work_file_name,
+                    f'{self._phase}_string': self.string,
+                    f'string': self.string,
+        }
+        logprint(f"{outputs = }", level='info')
+        return outputs
 
-    def get_path(self, *args, pg_name: str, cr_id: str, **kwargs) -> tuple[str, str]:
-        """Derives the full CR JSON file path and the target filename."""
-        work_file_name = self.data.get(sts.json_target)
-        cr_json_path = os.path.join(sts.cr_jsons_dir(pg_name),
-                                    sts.cr_json_file_name(work_file_name, cr_id))
-        return cr_json_path, work_file_name
+    def parse_source(self, *args, **kwargs) -> None:
+        if self.update_source_type == 'file':
+            self.string = self.handler.load_file(*args, **kwargs)
+        elif self.update_source_type == 'string':        
+            if self._phase == 'json':
+                self.data = JsonParser(*args, text=self.string, **kwargs)()
+            elif self._phase in {'integration', 'processing'}:
+                self.data = MdParser(*args, md_string=self.string, **kwargs)(*args, **kwargs)
+            elif self._phase == 'prompt':
+                self.data = PromptEngine(*args, **kwargs)(*args, **kwargs)
+            self.string = self.data.get(sts.content_key)
+        self.work_file_name = self.data.get(sts.target_key)
 
-    def write_json(self, *args, **kwargs) -> None:
-        """Writes the parsed JSON string to the CR path."""
-        if os.path.exists(str(self.cr_path)):
-            print(f"{Fore.MAGENTA}JsonEngine.write_json: JSON file already exists as "
-                  f"{os.path.basename(self.cr_path)}, skipping write. "
-                  f"\nNOTE: Consider writing a new CR, "
-                  f"if you want to update.{Fore.RESET}")
+    def veryfy_source(self, *args, path:str, string:str, update_source:str, 
+        update_source_type:str, file_exists:bool, **kwargs):
+        assert not ((string and update_source) and (update_source_type != 'file')), \
+        logprint(f"Ambigous sources \n{string = }\n{update_source = }", level='error')
+        # source = string or update_source
+        if update_source_type == 'string' or not update_source_type:
+            self.update_source_type = 'string'
+            self.string = string or update_source
+        elif path and file_exists:
+            assert os.path.exists(path), \
+            logprint(f"{self._phase = } File not found {path = }", level='error')
+            self.update_source_type = 'file'
+            self.path = path
+            self.file_exists = file_exists
+        elif string and self._phase == 'prompt':
+            self.string = string
+            self.update_source_type = 'string'
         else:
-            with open(self.cr_path, "w", encoding="utf-8") as f_json:
-                f_json.write(self.json_string)
-        self.cr_file_exists = sts.file_exists_default
+            logprint(f"{self._phase = } Source not found !", level='error')
 
 
-class IntegrationEngine:
-    """
-    Handles cleaning and staging of the cr_integration_file content
-    extracted from a JSON payload.
-    WHY: Separates file staging/cleaning from JSON parsing.
-    """
+class FileHandler:
 
-    def __init__(self, *args, work_file_name: str, content: str=None,
-                             cr_integration_file_exists:bool=False,**kwargs):
-        assert content or cr_integration_file_exists, (
-                            f"{Fore.RED}IntegrationEngine.__init__:{Fore.RESET} "
-                            f"either content or cr_integration_file_exists must be set.")
-        self.raw_content = content
-        self.work_file_name = work_file_name
-        self.cleaned_content = None
-        self.cr_path = None
-        self.cr_file_exists = cr_integration_file_exists
+    def __init__(self, phase, *args, **kwargs):
+        self._phase:str = phase
 
-    def __call__(self, *args, cr_id: str, pg_name: str, **kwargs ) -> "IntegrationEngine":
-        if self.cr_file_exists:
-            print(  f"{Fore.MAGENTA}IntegrationEngine.__call__: Integration path "
-                    f"already exists, skipping integrating.{Fore.RESET}")
-            return self
+    def load_file(self, path, *args, **kwargs) -> None:
+        assert self._phase in path, logprint(f"Not a {self._phase} path!", level='error')
+        with open(path, "r", encoding="utf-8") as f:
+            string = f.read()
+        return string
 
-        # Use the new MdParser to clean and validate the content
-        # FIX: The MdParser instance must be called to return the cleaned string content.
-        md_parser = MdParser(*args, md_string=self.raw_content)
-        self.cleaned_content = md_parser(*args, **kwargs) # <-- CHANGE IS HERE
+    def write_file(self, path, content, *args, **kwargs) -> None:
+        """Writes the parsed JSON string to the CR path."""
+        logprint(f"writing file {path = }\n{content[:100] = }", level='info')
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return sts.file_exists_default
 
-        if not self.cleaned_content:
-            self.cr_file_exists = False
-            return self
+    def _create_restore_file(self, *args, soruce_path:str, restore_path:str, **kwargs):
+        shutil.copyfile(source_path, restore_path)
+        logprint(f"creating restore file: {restore_path}", level='info')
 
-        self._write_content(*args, **kwargs)
-        return self
+    def remove_file(self, path, *args, **kwargs) -> None:
+        """Deletes the CR file at the specified path."""
+        if os.path.exists(path):
+            os.remove(path)
+            logprint(f"removing file: {path}", level='warning')
 
-    def _write_content(self, *args, cr_integration_path:str, **kwargs):
-        """Writes the cleaned content to the staged path."""
-        with open(cr_integration_path, "w", encoding="utf-8") as f:
-            f.write(self.cleaned_content)
-        self.cr_file_exists = sts.file_exists_default
+    def remove_operation(self, *args, hot:bool=False, path:str, **kwargs):
+        self.write_file(path, *args, **kwargs)
+        if hot:
+            self._create_restore_file(*args, **kwargs)
+            self.remove_file(*args, **kwargs)
+
+    def write_operation(self, *args, hot:bool=False, source_path:str, path:str, 
+        **kwargs):
+        # in any case we write to the processing path for CR documentation
+        self.write_file(path, *args, **kwargs)
+        if hot:
+            self._create_restore_file(*args, source_path=source_path, **kwargs)
+            self.write_file(source_path, *args, **kwargs)
+
+    def get_path(self, wfn, *args, pg_name: str, cr_id: str, **kwargs) -> tuple[str, str]:
+        """Derives the full CR JSON file path and the target filename."""
+        _dir = getattr(sts, f"{self._phase}_dir")(pg_name)
+        _file_name = getattr(sts, f"{self._phase}_file_name")(wfn, cr_id)
+        return os.path.join(_dir, _file_name)
 
 
 class ProcessEngine:
 
-    def __init__(self, *args, cr_processing_file_exists:bool=False, **kwargs):
+
+    def __init__(self, *args, **kwargs):
         self.csts = CSTSource(*args, **kwargs)
         self.cstd = CSTDelta(*args, **kwargs)
         self.F = Validator_Formatter()
-        self.cr_path, self.cr_file_exists = None, cr_processing_file_exists
-        self.status_dict = {}
+        self.handler = FileHandler(*args, **kwargs)
 
-    def __call__(self, *args, work_dir, cr_integration_path, source_path, pg_op:str=None, 
-        **kwargs):
-        self.csts(*args, source_path=source_path,  **kwargs)
-        self.cstd(*args, source_path=cr_integration_path, **kwargs)
-        pg_op, cr_ops = self.cstd.body
-        self.pg_op = pg_op.cr_op if pg_op else None
-        tf = ApplyChangesTransformer(self.csts.body, cr_ops, *args, pg_op=pg_op, **kwargs)
-        out_code = self.F(self.csts.body.visit(tf).code, *args, **kwargs)
-        self._write_output(out_code, *args, source_path=source_path, **kwargs)
+    def __call__(self, *args, **kwargs):
+        """
+        WHY: Honor package-level 'remove' with same hot+archive flow as _write_output.
+        """
+        self.process_python(*args, **kwargs)
+        self.process_operations(*args, **kwargs)
         return self
 
-    def _write_output(self, code: str, *args, 
-        source_path:str, cr_processing_path:str, cr_restore_path:str, hot:bool, **kwargs) -> bool:
-        """Writes the final transformed code to the target file path."""
-        with open(cr_processing_path, "w", encoding="utf-8") as f:
-            f.write(code)
-        # if source_file is overwritten we first backup the existing file for potential restore
-        if hot and source_path:
-            shutil.copyfile(source_path, cr_restore_path)
-            # then we write the new code
-            print(f"{Fore.MAGENTA}Updater._write_to source_path:{Fore.RESET} {source_path = }")
-            with open(source_path, "w", encoding="utf-8") as f:
-                f.write(code)
-            self.cr_file_exists = sts.file_exists_default
-        self.cr_file_exists = sts.file_exists_default
+    def process_python(self, *args, source_path:str, integration_path:str, **kwargs):
+        assert source_path and integration_path, logprint(
+            f"Missing processing input {source_path = }, {integration_path = }", level='error')
+        if not str(integration_path).endswith('.py'):
+            return
+        self.csts(*args, source_path=source_path, **kwargs)
+        self.cstd(*args, source_path=integration_path, **kwargs)
+        self.pg_head, self.cr_ops = self.cstd.body
+        self.marker = self.pg_head.create_marker(*args, **kwargs)
+        self.pg_op = self.pg_head.cr_op
+
+    def process_operations(self, *args, source_path:str, **kwargs):
+        if self.pg_head.cr_op == 'remove':
+            # when hot is False removal is simulated by outcommenting the source file content
+            self.handler.remove_operation((
+                                f"{self.marker}\n\n"
+                                f"\"\"\"\n"
+                                f"{self.handler.load_file(source_path, *args, **kwargs)}"
+                                f"\n\"\"\"\n"
+                                ), source_path, *args, **kwargs)
+        elif self.pg_head.cr_op == 'update':
+            tf = Transformer(self.csts.body, self.cstd.body, *args, **kwargs)(*args, **kwargs)
+            transformed = self.F(tf.source.code, *args, **kwargs)
+            self.handler.write_operation(transformed, *args, source_path=source_path, **kwargs)
+        elif self.pg_head.cr_op == 'create':
+            # NOTE: For 'create', we use the entire content of the integration file
+            # excluding the package header, which is available in CSTD's source_text.
+            # We must remove the package header line from the raw text.
+            raw_code = re.sub(sts.pg_header_regex, '', self.cstd.source_text, 1).strip()
+            transformed = self.F(raw_code, *args, **kwargs)
+            self.handler.write_operation(transformed, *args, source_path=source_path, **kwargs)
 
 
 class PromptEngine:
 
 
-    def __init__(self, *args, cr_prompt_file_exists:bool=False, **kwargs):
+    def __init__(self, *args, prompt_file_exists:bool=False, **kwargs):
         self.prompt = None
-        self.cr_path = None
+        self.path = None
         self.content = None
-        self.cr_file_exists = cr_prompt_file_exists
+        self.file_exists = prompt_file_exists
 
     #-- cr_op: replace, cr_type: function, cr_anc: prompt, cr_id: 2025-10-14-19-59-41 --#
     def __call__(self, *args, **kwargs) -> None:
         # printing.pretty_dict('kwargs', kwargs)
         self.prompt = self.mk_prompt(*args, **kwargs)
         self.content = self.model_create_cr(*args, **kwargs)
-        # printing.pretty_prompt(self.prompt, *args, **kwargs)
-        return self
+        self.data = self.prep_data(*args, **kwargs)
+        return self.data
 
+    def prep_data(self, *args, work_file_name:str, **kwargs) -> dict:
+        return {
+                sts.target_key: work_file_name,
+                sts.content_key: self.content,
+                }
 
     def mk_prompt(self, *args, api, **kwargs) -> str:
-        pre_p = self.render(f"{sts.cr_sts['cr_title']}\n{sts.cr_sts['cr_prefix']}", **kwargs)
-        user_prompt=self.render(f"{sts.cr_sts['cr_title']}", **kwargs)
-        # first model call to get base prompt with context
-        payload = PromptEngine.mk_payload(*args, api='prompt', user_prompt=user_prompt, **kwargs)
-        pre_p += PromptEngine.model_call(payload, *args, **kwargs)
+        pg_context = self.get_pg_context(*args, **kwargs)
         # main prompt construction
-        prompt = self.insert_guidelines(pre_p, *args, **kwargs)
-        prompt += self.render(  f"\n\n{sts.cr_sts['cr_prompt_head']}"
-                                    f"\n{sts.cr_sts['cr_prompt']}\n"
-                                    f"{sts.cr_sts['cr_suffix']}\n", **kwargs)
-        prompt += self.add_entry_point(*args, **kwargs)
+        guidelines = self.insert_guidelines(*args, **kwargs)
+        class_names = collections.class_names_from_file(*args, **kwargs)
+        prompt = self.mk_instructions(*args,
+                                            pg_context=pg_context,
+                                            guidelines=guidelines,
+                                            class_names=class_names,
+                    **kwargs)
+        logprint(f"Prompt", level='dev')
+        print(printing.pretty_prompt(prompt, *args, **kwargs))
         return printing.clean_pipe_text(prompt)
 
-    def add_entry_point(self, *args, source_path:str=None,
-            cr_op:str,
-            cr_type:str='tbd',
-            cr_anc:str='tbd',
+    def get_pg_context(self, *args, string:str=None, integration_format:str='md', 
         **kwargs) -> str:
-        if cr_op is None or cr_op not in ['create', 'update']:
-            return ''
-        if source_path is not None:
-            cr_anc = PromptEngine.class_names_from_file(path=source_path, *args, **kwargs)
-        with open(sts.cr_integration_file_templ_path, "r", encoding="utf-8") as f:
-            code = f"{self.render(f.read(), cr_op=cr_op, cr_type=cr_type, cr_anc=cr_anc, **kwargs)}"
-        # entry point explain for the model to know what we expect
-        template = self.render(f"\n{sts.start_head}\n{sts.start_prefix}\n{sts.start_string}\n", 
-                                start_string=code, **kwargs)
-        print(f"{Fore.YELLOW}{template}{Fore.RESET}")
-        return template
+        # first model call to get base prompt with context
+        pl = PromptEngine.mk_payload(*args, 
+                                            api='prompt', 
+                                            string='codeon context', 
+                                            verbose=2,
+                                            **kwargs)
+        r = PromptEngine.model_call(pl, *args, **kwargs).strip()
+        # we cut intro and instructions from the resulting prompt to do our own
+        prompt = r.split(sts.from_split, 1)[-1].rsplit(sts.to_split)[0]
+        prompt = sts.from_split + prompt
+        if integration_format == "md":
+            # json instructions are not relevant if .md file so we cut it
+            prompt = prompt.split(sts.readme_split)[0]
+        return prompt
+
+    def mk_instructions(self, *args, **kwargs) -> str:
+        with open(sts.integration_file_templ_path, "r", encoding="utf-8") as f:
+            templ = f.read()
+        return '\n' + f"{self.render(templ, *args, **kwargs)}".strip() + '\n'
 
     @staticmethod
-    def class_names_from_file(path: str, *args, **kwargs) -> list[str]:
-        """WHY: Parse classes without executing code (safe, fast)."""
-        with open(path, "r", encoding="utf-8") as f:
-            s = f.read()
-        t = ast.parse(s, filename=path)
-        return f"[{', '.join([n.name for n in ast.walk(t) if isinstance(n, ast.ClassDef)])}]"
-
-
-    @staticmethod
-    def mk_payload(*args, api='prompt', work_dir:str, work_file_name:str, verbose:int=None,
-                                        user_prompt:str='None',
-                                        external_prompt:str=None,
-        **kwargs):
-        assert not any([s in user_prompt for s in sts.jinja_seps]), \
-        f"propmt_info.model_call: invalid chars inside jinja2 template: {sts.jinja_seps = }"
+    def mk_payload(*args, api='prompt', string:str, work_dir:str, work_file_name:str, 
+        verbose:int=0, external_prompt:str=None, **kwargs):
+        checks = {'api': api, 'string': string, 'work_dir': work_dir, 
+                    'work_file_name': work_file_name}
+        assert all(checks.values()), logprint(f"missing: {checks = }", level='error')
+        assert not any([s in string for s in sts.jinja_seps]), \
+        logprint(f"invalid chars inside jinja2 template: {sts.jinja_seps = }", level='error')
         return {
                     "api": api, 
                     "work_dir": work_dir,
-                    "user_prompt": user_prompt if not external_prompt else None,
+                    "user_prompt": string if not external_prompt else None,
                     "external_prompt": external_prompt,
                     "work_file_name": work_file_name,
                     "kwargs_defaults": 'codeon',
                     "verbose": verbose,
                     }
 
-    @staticmethod
-    def model_call(payload, *args, integration_format:str='md', **kwargs):
-        # this calls altered bytes server on localhost
-        r = str(requests.post(  f"{getattr(sts, 'model_ip', 'http://localhost')}:"
-                                f"{getattr(sts, 'model_default_port', 9005)}/call/",
-                                    json={**payload},
-                                    headers={"Accept": "application/json"}, 
-                                    timeout=60,
-                        )
-                        .json()
-                        .get("response")
-                )
-        prompt = f"# {sts.from_split}\n{r.rsplit(sts.from_split, 1)[-1].rsplit(sts.to_split, 1)[0]}"
-        if integration_format == "md":
-            prompt = prompt.split(sts.readme_split)[0]
-        return prompt
 
-    def insert_guidelines(self, prompt:str, *args, verbose:int=0, **kwargs) -> str:
-        findr = sts.readme_replace['installs'][0].strip('^')
-        repls = sts.readme_replace['installs'][1]
-        t_prompt = re.sub(findr, repls, prompt, flags=re.DOTALL | re.MULTILINE)
+    def insert_guidelines(self, *args, verbose:int=0, **kwargs) -> str:
         if verbose >= 2:
             with open(sts.cq_ex_llm_file, "r", encoding="utf-8") as cq:
-                guidelines = '\n' + cq.read() + '\n'
+                guidelines = cq.read()
         else:
-            guidelines = "\nNOTE: CQ:EX-LLM to generate professional python.\n"
-        return jinja2.Template(t_prompt).render({'guidelines': guidelines})
-
-    def print_info(self, out):
-        print(      f"{Fore.GREEN}\nPrompt copied to clipboard:{Fore.RESET}"
-                    f"\n'''{Style.DIM}{out[:160]}\n"
-                    f"{Fore.BLUE}...{Style.RESET_ALL}\n"
-                    f"{out[-160:]}\n'''")
+            guidelines = "Apply: CQ:EX-LLM (PEP) to write professional python."
+        return '\n' + guidelines.strip() + '\n'
 
     def render(self, text, *args, **kwargs) -> str:
         """jinja2 renders a text using kwargs as context"""
         assert kwargs, "PromptEngine.render: kwargs must not be empty."
         pr_fields = set(re.findall(r'{{\s*(\w+)\s*}}', text))
         context = {f: kwargs.get(f) for f in pr_fields}
-        assert (pr_fields == context.keys()) \
-                and all(context.values()), (f"prompter.render: missing fields in kwargs: "
-                                            f"{pr_fields = }, {context = }")
+        ctx = '\n'.join([f"{k}:\t{str(v)[:50]}" for k, v in context.items()])
+        assert (pr_fields == context.keys()) and all(context.values()), \
+            logprint((  f"missing fields in kwargs:"
+                        f"\n{pr_fields = }"
+                        f"\ncontext:\n{ctx}"), level='error')
         return jinja2.Template(text).render(context) + '\n'
 
-    def create_cr_file(self, *args, work_file_name:str, cr_id:str, pg_name:str, **kwargs) -> None:
-        # printing.pretty_dict('kwargs', kwargs)
-        cr_prompt_dir = sts.cr_prompt_dir(pg_name)
-        cr_prompt_file_name = sts.cr_prompt_file_name(work_file_name, cr_id)
-        with open(os.path.join(cr_prompt_dir, cr_prompt_file_name), 'w', encoding='utf-8') as f:
-            f.write(self.prompt)
-        self.cr_file_exists = sts.file_exists_default
-
     def model_create_cr(self, *args, api, **kwargs) -> str:
-        self.create_cr_file(*args, **kwargs)
-        payload = self.mk_payload(*args, api='thought', external_prompt=self.prompt,
-                                        **kwargs)
+        payload = self.mk_payload(*args, api='thought', external_prompt=self.prompt, **kwargs)
         r = self.model_call(payload, *args, **kwargs)
-        return r
+        return self.prompt + '\n\n' + r
 
+    @staticmethod
+    def model_call(payload, *args, **kwargs):
+        # this calls altered bytes server on localhost
+        printing.pretty_dict('PromptEngine.model_call.payload', payload, color=Fore.YELLOW)
+        r = str(requests.post(  f"{getattr(sts, 'model_ip', 'http://localhost')}:"
+                                f"{getattr(sts, 'model_default_port', 9005)}/call/",
+                                    json={**payload},
+                                    headers={"Accept": "application/json"}, 
+                                    timeout=60,
+                            )
+                            .json()
+                            .get("response")
+                )
+        return r
 
 class Validator_Formatter:
     """

@@ -19,7 +19,7 @@ class Test_DefaultClass(unittest.TestCase):
         cls.pars = {
                     'api': 'cr',
                     'infos': ['package'],
-                    'cr_prompt': "We need a new __repr__ method for the Codeon class.",
+                    'prompt_string': "We need a new __repr__ method for the Codeon class.",
                     'source_path': cls.test_work_file_name,
                     'integration_format': 'md',
                     'verbose': 2,

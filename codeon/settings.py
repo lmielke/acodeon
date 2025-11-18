@@ -20,8 +20,10 @@ time_stamp_regex = r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}"
 cr_id_regex = rf"cr_({time_stamp_regex})_"
 to_dt = lambda ts: dt.strptime(ts, "%Y-%m-%d-%H-%M-%S")
 # match to dict cr_id, file_name, file_ext from a file-name like cr_2024-01-31-12-30-45_example.py
-file_regex = rf"(?P<name>.+?)(?P<ext>\.\w+)$"
-cr_file_regex = rf"cr_(?P<cr_id>{time_stamp_regex})_(?P<file_name>{file_regex})"
+# cr files can be markdown or json or python files
+cr_file_name_exts = {'md', 'json', 'py'}
+file_name_regex = rf"^(?P<name>[\w.-]+?)(?P<ext>\.\w+)$"
+cr_file_regex = rf"cr_(?P<cr_id>{time_stamp_regex})_(?P<file_name>\w+\.(?:{'|'.join(cr_file_name_exts)}))"
 
 ignore_dirs = {
     ".git",
@@ -86,48 +88,51 @@ md_fence_regex = r"^\s*```[a-zA-Z]*\n|(\n\s*```\s*$)"
 # the resulting paths depend on the work_path or cwd this package is run inside
 # all process files are stored here
 integration_formats = {
-    'md': '__cr_integration_file__',
-    'json': '__cr_integration_json__',
+    'md': '__integration_file__',
+    'json': '__integration_json__',
 }
 
-phases = ('cr_prompt', 'cr_json', 'cr_integration', 'cr_processing')# cr_finalizing
+phases = ('prompt', 'json', 'integration', 'processing')# cr_finalizing
 
-cr_integration_file_templ_path = os.path.join(resources_dir, 'cr_integration_file_template.md')
+integration_file_templ_path = os.path.join(resources_dir, 'integration_file_template.md')
 cq_ex_llm_file = os.path.join(resources_dir, 'CQ-EX-LLM.md')
-temp_dir = lambda pg_name: os.path.join(resources_dir, 'cr_logs', pg_name)
+temp_dir = lambda pg_name: os.path.join(resources_dir, pg_name)
 # do not change order here
-# all cr_prompt files are stored here
-cr_prompt_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_prompts')
-cr_prompt_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.md'
-# all cr_json_files are staged here
-cr_jsons_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_jsons')
-cr_json_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.json'
-# all cr_integration_files are staged here
-cr_integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_integrations')
-cr_integration_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.py'
+# all prompt_string files are stored here
+prompt_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'prompts')
+prompt_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.md'
+# all json_files are staged here
+json_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'jsons')
+json_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.json'
+# all integration_files are staged here
+integration_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'integrations')
+integration_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split('.')[0]}.py'
 # staging dir for source update files
-cr_stages_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'cr_processing')
-cr_stage_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+processing_dir = lambda pg_name: os.path.join(temp_dir(pg_name), 'processing')
+processing_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
 # restoring overwritten source files is done from here
-cr_restores_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'{pg_name}_archive')
-cr_restore_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+restore_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'{pg_name}_archive')
+restore_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
 # all cr meta data is logged here
-cr_logs_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'cr_logs')
-cr_log_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+logs_dir = lambda pg_name: os.path.join(temp_dir(pg_name), f'logs')
+log_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}.py'
+# all warnings or errors are loged in logs_dir
+error_file_name = lambda f_name, cr_id: f'cr_{cr_id}_{f_name.split(".")[0]}_error.log'
+error_path = None # to be set later
 
 cr_paths = {
-    'cr_prompt_path': (cr_prompt_dir, cr_prompt_file_name),
-    'cr_json_path': (cr_jsons_dir, cr_json_file_name),
-    'cr_integration_path': (cr_integration_dir, cr_integration_file_name),
-    'cr_processing_path': (cr_stages_dir, cr_stage_file_name),
-    'cr_restore_path': (cr_restores_dir, cr_restore_file_name),
-    'cr_log_path': (cr_logs_dir, cr_log_file_name),
+    'prompt_path': (prompt_dir, prompt_file_name),
+    'json_path': (json_dir, json_file_name),
+    'integration_path': (integration_dir, integration_file_name),
+    'processing_path': (processing_dir, processing_file_name),
+    'restore_path': (restore_dir, restore_file_name),
+    'log_path': (logs_dir, log_file_name),
+    'error_path': (logs_dir, error_file_name),
 }
 
 file_exists_default = 'NEW'
-rm_cr_prefix = lambda file_name, cr_id: file_name.replace(f'cr_{cr_id}_', '')
 
-json_target, json_content = 'target', 'code'
+target_key, content_key = 'target', 'code'
 # exists_status = 'already exists'
 
 user_settings_name = "settings.yml"

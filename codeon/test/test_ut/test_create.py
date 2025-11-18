@@ -16,7 +16,7 @@ class Test__create(unittest.TestCase):
         cls.source_path = os.path.join(sts.test_data_dir, "test_parsers_data.py")
         cls.json_string_content, cls.code = cls.mk_json_from_code_file(cls.source_path, cls.json_file_path)
         cls.cr_id = sts.time_stamp()
-        cls.expected_path = os.path.join(   sts.cr_stages_dir(sts.package_name), 
+        cls.expected_path = os.path.join(   sts.processing_dir(sts.package_name), 
                                             f"cr_{cls.cr_id}_test_parsers_data.py")
 
     @classmethod
@@ -60,7 +60,7 @@ class Test__create(unittest.TestCase):
 
     def test_stage_cr_cr_file_from_json_string(self):
         """
-        Tests that the create API correctly stages an cr_integration_file
+        Tests that the create API correctly processes an integration_file
         from a JSON string that was read from a file.
         """
         self.assertFalse(os.path.exists(self.expected_path))

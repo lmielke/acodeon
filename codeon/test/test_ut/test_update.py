@@ -13,7 +13,7 @@ class Test__update(unittest.TestCase):
     @classmethod
     def setUpClass(cls, *args, **kwargs):
         cls.verbose = 0
-        cls.cr_id = sts.time_stamp()
+        cls.cr_id = sts.session_time_stamp
         cls.test_data = cls.mk_test_data(*args, **kwargs)
         # cr_ prefix is only used to seperate files inside the test/data dir
         cls.json_file_path = os.path.join(sts.test_data_dir, "cr_headers.json" )
@@ -38,11 +38,11 @@ class Test__update(unittest.TestCase):
         cls.test_target_name = cls.test_file_name.replace("cr_", f"cr_{cls.cr_id}_")
         # we check if a test_target_name containing file already exists and remove it
         # to avoid spamming the target dir
-        for n in os.listdir(sts.cr_integration_dir(sts.package_name)):
+        for n in os.listdir(sts.integration_dir(sts.package_name)):
             if cls.test_target_name in n:
-                os.remove(os.path.join(sts.cr_integration_dir(sts.package_name), n))
+                os.remove(os.path.join(sts.integration_dir(sts.package_name), n))
         cls.test_source_path = os.path.join(
-            sts.cr_integration_dir(sts.package_name), cls.test_target_name
+            sts.integration_dir(sts.package_name), cls.test_target_name
         )
         # we copy the op code file to cls.test_source_path
         shutil.copy(cls.test_file_path, cls.test_source_path)
@@ -61,15 +61,15 @@ class Test__update(unittest.TestCase):
                                             verbose=3,
                                         )
 
-    def test_update_halts_on_invalid_cr_op(self):
+    # def test_update_halts_on_invalid_cr_op(self):
         """
-        Tests that the update process exits cleanly when an invalid cr_integration_file is found.
+        Tests that the update process exits cleanly when an invalid integration_file is found.
         """
-        invalid_cr_path = os.path.join(sts.test_data_dir, "invalid_cr_cr_file.py")
-        source_path = os.path.join(sts.test_data_dir, "test_parsers_data.py")
+        # invalid_cr_path = os.path.join(sts.test_data_dir, "invalid_cr_cr_file.py")
+        # source_path = os.path.join(sts.test_data_dir, "test_parsers_data.py")
 
         # with self.assertRaises(SystemExit) as cm:
-        #     codeon.apis.update.main(source_path=source_path, cr_integration_path=invalid_cr_path)
+        #     codeon.apis.update.main(source_path=source_path, integration_path=invalid_cr_path)
 
         # Verify that the exit code is 1, indicating an error
         # self.assertEqual(cm.exception.code, 1)
